@@ -1,0 +1,5 @@
+{"time": "2026-10-08T11:02:10Z", "level": "info", "service": "payment-api", "msg": "Payment gateway health check passed"}
+{"time": "2026-10-08T11:02:41Z", "level": "warning", "service": "payment-api", "msg": "Gateway response slow: 2900 ms", "request_id": "req-a110"}
+{"time": "2026-10-08T11:02:44Z", "level": "error", "service": "payment-api", "msg": "Gateway request timed out after 5000 ms", "error_type": "TimeoutError", "request_id": "req-a111"}
+{"time": "2026-10-08T11:02:45Z", "level": "error", "service": "payment-api", "msg": "Gateway request timed out after 5000 ms", "error_type": "TimeoutError", "request_id": "req-a112"}
+{"time": "2026-10-08T11:02:47Z", "level": "debug", "service": "payment-api", "msg": "Retrying request req-a112, attempt 2"}

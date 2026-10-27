@@ -1,0 +1,14 @@
+2026-10-08 10:14:58 INFO [checkout-api] Order 4821 created for user 77
+2026-10-08 10:15:01 WARNING [checkout-api] Database query took 4200 ms
+2026-10-08 10:15:02 ERROR [postgres] FATAL: the database system is shutting down
+2026-10-08 10:15:03 ERROR [checkout-api] OperationalError: connection to server at "localhost", port 5432 failed: Connection refused request_id=req-9f31
+Traceback (most recent call last):
+  File "/app/routes/checkout.py", line 42, in create_order
+    order = save_order(db, cart)
+  File "/app/services/orders.py", line 18, in save_order
+    db.commit()
+2026-10-08 10:15:03 ERROR [checkout-api] POST /checkout returned 503 Service Unavailable request_id=req-9f31
+2026-10-08 10:15:04 ERROR [checkout-api] OperationalError: connection to server at "localhost", port 5432 failed: Connection refused request_id=req-9f32
+2026-10-08 10:15:04 ERROR [checkout-api] POST /checkout returned 503 Service Unavailable request_id=req-9f32
+2026-10-08 10:15:05 CRITICAL [web-frontend] Checkout page failed to load: upstream returned 503
+2026-10-08 10:15:09 INFO [auth-service] User 81 logged in
