@@ -934,6 +934,89 @@ Yes. The grid changes from 12 columns to 6, then to 1 on small screens.
 
 ---
 
+## Research comparison (the main evaluation focus)
+
+BugSense is compared with **two IEEE papers from companies**. Full details
+are in `RESEARCH.md`.
+
+| | Paper | Company | IEEE venue | Matches |
+|---|---|---|---|---|
+| 1 | GRLIA: Graph-based Incident Aggregation | Huawei Cloud | ASE 2021 | Grouping errors into incidents (Phase 5) |
+| 2 | Root cause and mitigation with LLMs | Microsoft | ICSE 2023 | AI diagnosis (Phase 7) |
+
+**What to say in one minute:**
+
+> "I compared BugSense with two IEEE papers from companies. The first is
+> GRLIA from Huawei Cloud, at ASE 2021. One failure in a cloud spreads to
+> many services, so GRLIA groups the resulting incidents by learning how
+> failures cascade, using a graph model trained on past failures and
+> metrics. BugSense groups incidents from raw logs alone with simple rules,
+> needs no training, and shows the reason for every decision. The second is
+> Microsoft's study at ICSE 2023, which gives large language models the
+> title and summary of more than 40,000 incidents and asks for the root
+> cause and the fix. BugSense's AI diagnosis will instead receive the
+> structured evidence BugSense extracted itself, needs no fine-tuning, and
+> must say 'probable' and list its limits. So what is new is one open tool,
+> from raw logs to explained incidents, that runs on a laptop."
+
+### Paper 1: GRLIA (Huawei Cloud)
+
+- **What they did:** grouped incidents caused by the same failure, using
+  graph representation learning on past failure cascades and monitoring
+  metrics (KPIs). Real Huawei Cloud data; deployed in industry.
+- **Their limits:** needs failure history and metrics, gives no reason for a
+  grouping, and is an internal company system.
+- **What BugSense does:** groups by time (10-minute gap) from raw logs alone,
+  with severity rules and the reason shown.
+- **What is new:** explainable, no training needed, and process crashes join
+  the same incident through the service monitor.
+
+### Paper 2: LLMs for root cause (Microsoft)
+
+- **What they did:** GPT-3.x models read the incident title and summary and
+  suggested the root cause and mitigation steps, for 40,000+ Microsoft
+  incidents, zero-shot and fine-tuned, with a human evaluation.
+- **Their limits:** fine-tuning needs tens of thousands of past incidents,
+  and the model sees only a short text, not the actual logs.
+- **What BugSense will do (Phase 7):** send the AI the structured evidence of
+  one incident (errors, services, stack traces, crash events), with no
+  fine-tuning, and require "probable", the evidence used, and its limits.
+- **What is new:** grounded in evidence, works without incident history, and
+  honest about uncertainty.
+
+### Likely questions
+
+**Why these two papers?**
+Each matches a main part of BugSense: Paper 1 is about grouping incidents
+(Phase 5) and Paper 2 is about AI diagnosis (Phase 7). Both are IEEE papers
+from large companies, so they show how industry solves the same problems.
+
+**Is BugSense better than Huawei's or Microsoft's systems?**
+No, and it does not claim to be. Those systems work at company scale on
+private data. BugSense fills a different gap: an open, explainable tool that
+a small team can run without any history or training.
+
+**Why not use deep learning like GRLIA?**
+It needs a history of past failures and gives no reason for its result.
+BugSense uses rules first so every decision can be explained and checked.
+
+**How is BugSense's AI different from Microsoft's?**
+Microsoft's models see only the incident's title and summary. BugSense's AI
+will see the actual evidence that BugSense collected and grouped, so its
+answer can point at real log lines.
+
+**How did you evaluate it?**
+The parser against Loghub's official CSV (100% on 12,000 lines), incident
+counts on six real datasets with different time gaps, and four failure
+scenarios where the true cause is known.
+
+**What is the weakest part?**
+There is no labelled incident data yet, so there are no precision and recall
+figures. Grouping by time can also join unrelated problems; GRLIA avoids
+that by learning, at the cost of training data.
+
+---
+
 ## Design decisions I can defend
 
 **Why no Docker?**

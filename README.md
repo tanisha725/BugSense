@@ -40,6 +40,13 @@ would: status, health checks, restarts and crash loops.
   plus common application formats
 - Logs page with text search and severity / service filters
 
+## Research background
+
+[RESEARCH.md](RESEARCH.md) compares BugSense with two IEEE papers from
+companies: GRLIA from Huawei Cloud (incident grouping, ASE 2021) and
+Microsoft's study of LLMs for root cause analysis (ICSE 2023). It covers what
+they did, what BugSense does, what is new, and the evaluation so far.
+
 ## Architecture
 
 ```
