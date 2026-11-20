@@ -1,9 +1,24 @@
 import { Fragment, useEffect, useState } from 'react'
 import LineChart from '../components/LineChart.jsx'
 import TraceWaterfall from '../components/TraceWaterfall.jsx'
-import { getMetricNames, getMetricSeries, getTelemetryServices, getTrace, getTraces } from '../services/api.js'
+import {
+  getMetricNames,
+  getMetricSeries,
+  getTelemetryRange,
+  getTelemetryServices,
+  getTrace,
+  getTraces,
+  telemetryFromLogs,
+} from '../services/api.js'
 
-const WINDOWS = [5, 15, 60]
+// 'all' shows the whole time range of the data, for logs uploaded from the past
+const WINDOWS = [5, 15, 60, 'all']
+
+const SOURCES = {
+  otel: { label: 'Measured', title: 'Sent live by the program over OpenTelemetry' },
+  logs: { label: 'From logs', title: 'Calculated by BugSense from the uploaded logs' },
+  both: { label: 'Measured + logs', title: 'Partly measured, partly calculated from logs' },
+}
 const AGGREGATIONS = ['avg', 'p50', 'p95', 'p99', 'min', 'max', 'sum', 'count', 'rate', 'last']
 
 function percent(value) {
@@ -26,6 +41,7 @@ function formatterFor(series) {
 
 // What OpenTelemetry tells us about each service: requests, errors, latency,
 // CPU and memory, a chart of any metric, and every request as a trace.
+// For uploaded logs the same numbers are calculated from the logs themselves.
 function Telemetry({ project, projectId }) {
   const [windowMinutes, setWindowMinutes] = useState(15)
   const [overview, setOverview] = useState(null)
@@ -38,12 +54,38 @@ function Telemetry({ project, projectId }) {
   const [traceFilters, setTraceFilters] = useState({ status: 'ANY', service: '', min_duration_ms: '' })
   const [traces, setTraces] = useState([])
   const [openTrace, setOpenTrace] = useState(null)
+  const [range, setRange] = useState(null)
+  const [message, setMessage] = useState(null)
+  const [reloadCount, setReloadCount] = useState(0)
 
   // Everything refreshes every 5 seconds: telemetry is live data
   useEffect(() => {
     let cancelled = false
-    function load() {
-      const scope = { project_id: projectId, window_minutes: windowMinutes }
+    async function scopeNow() {
+      if (windowMinutes !== 'all') return { project_id: projectId, window_minutes: windowMinutes }
+      // The whole time range of the data, which may be days or years ago
+      const found = await getTelemetryRange(projectId)
+      if (!cancelled) setRange(found)
+      if (!found.last) return null
+      return { project_id: projectId, window_minutes: Math.min(found.minutes + 2, 43200), until: found.last }
+    }
+
+    async function load() {
+      let scope
+      try {
+        scope = await scopeNow()
+      } catch (problem) {
+        if (!cancelled) setError(problem.message)
+        return
+      }
+      if (!scope) {
+        if (!cancelled) {
+          setOverview({ services: [] })
+          setSeries(null)
+          setTraces([])
+        }
+        return
+      }
       Promise.all([
         getTelemetryServices(scope),
         getMetricNames({ project_id: projectId }),
@@ -66,7 +108,22 @@ function Telemetry({ project, projectId }) {
       cancelled = true
       clearInterval(timer)
     }
-  }, [projectId, windowMinutes, chart, traceFilters])
+  }, [projectId, windowMinutes, chart, traceFilters, reloadCount])
+
+  async function calculateFromLogs() {
+    setMessage(null)
+    try {
+      const result = await telemetryFromLogs(projectId)
+      setMessage(
+        `Calculated from ${result.logs.toLocaleString()} logs: ${result.traces} traces and ` +
+          `${result.metric_points} activity points.`,
+      )
+      setWindowMinutes('all')
+      setReloadCount((count) => count + 1)
+    } catch (problem) {
+      setError(problem.message)
+    }
+  }
 
   async function showTrace(traceId) {
     if (openTrace?.trace_id === traceId) {
@@ -88,9 +145,14 @@ function Telemetry({ project, projectId }) {
         <div>
           <h1 className="page-title">Telemetry</h1>
           <p>
-            OpenTelemetry traces and metrics from <strong>{project ? project.name : 'all projects'}</strong>, received
-            over OTLP and updated every 5 seconds.
+            Traces and metrics for <strong>{project ? project.name : 'all projects'}</strong>: measured live over
+            OpenTelemetry, or calculated from uploaded logs. Updated every 5 seconds.
           </p>
+          {windowMinutes === 'all' && range?.first && (
+            <p className="muted">
+              Showing all data: {new Date(range.first).toLocaleString()} → {new Date(range.last).toLocaleString()}
+            </p>
+          )}
         </div>
         <div className="segmented light" aria-label="Time window">
           {WINDOWS.map((minutes) => (
@@ -100,21 +162,32 @@ function Telemetry({ project, projectId }) {
               className={windowMinutes === minutes ? 'active' : ''}
               onClick={() => setWindowMinutes(minutes)}
             >
-              {minutes} min
+              {minutes === 'all' ? 'All data' : `${minutes} min`}
             </button>
           ))}
         </div>
       </header>
 
       {error && <p className="notice bad">Could not load telemetry: {error}</p>}
+      {message && <p className="notice good">{message}</p>}
 
       {overview && services.length === 0 && (
         <section className="glass card">
           <p className="empty">
-            No telemetry in the last {windowMinutes} minutes. Start the demo shop on the Services page: its three
-            programs send traces and metrics here. Any OpenTelemetry SDK can send to <code>/v1/traces</code>,{' '}
-            <code>/v1/metrics</code> and <code>/v1/logs</code>.
+            {windowMinutes === 'all'
+              ? 'No telemetry for this project yet.'
+              : `No telemetry in the last ${windowMinutes} minutes. Uploaded logs are usually from the past: try "All data".`}{' '}
+            Telemetry comes from two places: programs that send it live over OpenTelemetry (start the demo shop on the
+            Services page), and uploaded logs, from which BugSense calculates it.
           </p>
+          {projectId && (
+            <div className="form-footer">
+              <span className="muted">Uploaded these logs before this feature existed?</span>
+              <button type="button" className="button" onClick={calculateFromLogs}>
+                Calculate telemetry from this project&apos;s logs
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -127,6 +200,9 @@ function Telemetry({ project, projectId }) {
                 {service.requests ? `${percent(service.error_rate)} errors` : 'no requests'}
               </span>
             </div>
+            <span className={`source-tag source-${service.source}`} title={SOURCES[service.source]?.title}>
+              {SOURCES[service.source]?.label}
+            </span>
             <dl className="telemetry-facts">
               <div><dt>Requests / min</dt><dd>{service.requests_per_minute}</dd></div>
               <div><dt>Errors</dt><dd>{service.errors} of {service.requests}</dd></div>
@@ -135,6 +211,17 @@ function Telemetry({ project, projectId }) {
               <div><dt>Latency p99</dt><dd>{ms(service.latency_ms.p99)}</dd></div>
               <div><dt>CPU</dt><dd>{service.cpu_percent === null ? '-' : `${service.cpu_percent}%`}</dd></div>
               <div><dt>Peak memory</dt><dd>{service.memory_mb === null ? '-' : `${service.memory_mb} MB`}</dd></div>
+              {service.log_count > 0 && (
+                <>
+                  <div><dt>Logs / min</dt><dd>{service.logs_per_minute}</dd></div>
+                  <div>
+                    <dt>Error logs</dt>
+                    <dd className={service.log_error_rate >= 0.2 ? 'text-bad' : ''}>
+                      {service.error_logs} of {service.log_count} ({percent(service.log_error_rate)})
+                    </dd>
+                  </div>
+                </>
+              )}
             </dl>
           </article>
         ))}
@@ -144,7 +231,10 @@ function Telemetry({ project, projectId }) {
         <div className="card-header">
           <div>
             <h3>Metric over time</h3>
-            <p className="muted">Pick any received metric, or one calculated from the spans.</p>
+            <p className="muted">
+              Pick any metric: received over OpenTelemetry, calculated from the spans, or <code>log.records</code> (logs
+              per minute, calculated from uploaded logs; use <em>sum</em>).
+            </p>
           </div>
         </div>
         <div className="chart-controls">
@@ -222,7 +312,9 @@ function Telemetry({ project, projectId }) {
                 {traces.map((trace) => (
                   <Fragment key={trace.trace_id}>
                     <tr className={openTrace?.trace_id === trace.trace_id ? 'open' : ''} onClick={() => showTrace(trace.trace_id)}>
-                      <td className="cell-time">{new Date(trace.start_time).toLocaleTimeString()}</td>
+                      <td className="cell-time">
+                        {windowMinutes === 'all' ? new Date(trace.start_time).toLocaleString() : new Date(trace.start_time).toLocaleTimeString()}
+                      </td>
                       <td className="cell-service">{trace.root}</td>
                       <td>{trace.services.join(' → ')}</td>
                       <td className={trace.duration_ms >= 1000 ? 'text-bad' : ''}>{trace.duration_ms.toFixed(0)} ms</td>

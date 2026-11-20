@@ -974,7 +974,38 @@ the industry standard for telemetry. Each service sends:
 > where it failed. That is what professional monitoring tools do, and I used
 > the same standard, OpenTelemetry, that Huawei Cloud's AOM and APM accept."
 
+### Telemetry from uploaded logs
+
+Uploaded logs are records of the past, so nothing can be measured live. But
+the logs **contain** telemetry, and BugSense calculates it ("metrics from
+logs", a normal technique in monitoring tools):
+
+| From the logs | Becomes |
+|---|---|
+| Logs with the same request ID in several services | One **trace**; each service is a span; failed if any of its logs is an error |
+| "in 19 ms", "took 2.3 s", "time: 0.27" | The **latency** of that span |
+| Every log | **Logs per minute** and the share of error logs, per service (metric `log.records`) |
+
+It is stored with `source = "logs"`, so the page shows **"From logs"**, while
+the demo shop's data shows **"Measured"**. It is recalculated after every
+upload, and the **All data** button shows the logs' own time range.
+
+Real example: the OpenStack dataset gives 938 traces from its request IDs,
+and 809 API requests with p50 264 ms and p95 411 ms, read from lines ending in
+`time: 0.2717581`.
+
+> "Live programs send telemetry over OpenTelemetry. For uploaded logs,
+> BugSense calculates the same telemetry from the logs: request IDs become
+> traces, written durations become latency, and every log counts towards the
+> activity and error rate. The page always says which numbers were measured
+> and which were calculated."
+
 ### Likely questions
+
+**Is telemetry from logs as good as measured telemetry?**
+No. It can only use what the logs say. Without request IDs there are no
+traces, and without written durations there is no latency, only log activity
+and error share. That is why every number is marked "Measured" or "From logs".
 
 **What is a span? What is a trace?**
 A span is one step (for example "shop-api handles GET /checkout"). A trace is

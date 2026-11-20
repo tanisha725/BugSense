@@ -279,7 +279,7 @@ def get_service_status(db, p: ServiceStatus):
 class ServiceMetrics(Params):
     project_id: int | None = Field(None, ge=1, description="Only this project.")
     service: str | None = Field(None, max_length=100, description="One service (exact name). Leave out for all.")
-    window_minutes: int = Field(5, ge=1, le=1440, description="How many minutes to summarise.")
+    window_minutes: int = Field(5, ge=1, le=43200, description="How many minutes to summarise.")
     until: datetime | None = Field(None, description="End of the window (ISO 8601). Default: now.")
 
 
@@ -299,7 +299,7 @@ class MetricSeries(Params):
     )
     project_id: int | None = Field(None, ge=1, description="Only this project.")
     service: str | None = Field(None, max_length=100, description="One service (exact name).")
-    window_minutes: int = Field(15, ge=1, le=1440, description="How many minutes back.")
+    window_minutes: int = Field(15, ge=1, le=43200, description="How many minutes back.")
     step_seconds: int = Field(60, ge=5, le=3600, description="Size of each point in seconds.")
     aggregation: Literal[telemetry.AGGREGATIONS] = Field(  # type: ignore[valid-type]
         "avg", description="How the values in one step are combined."
@@ -323,7 +323,7 @@ class SearchTraces(Params):
     service: str | None = Field(None, max_length=100, description="Only traces that pass through this service.")
     status: Literal["ANY", "ERROR", "OK"] = Field("ANY", description="ERROR finds failed requests.")
     min_duration_ms: float | None = Field(None, ge=0, description="Only requests at least this slow.")
-    window_minutes: int = Field(15, ge=1, le=1440, description="How many minutes back.")
+    window_minutes: int = Field(15, ge=1, le=43200, description="How many minutes back.")
     until: datetime | None = Field(None, description="End of the window (ISO 8601). Default: now.")
     limit: int = Field(10, ge=1, le=50, description="Maximum number of traces.")
 

@@ -24,6 +24,7 @@ from app.services.log_parser import (
     split_into_entries,
 )
 from app.services.datasets import to_csv
+from app.services import log_telemetry
 from app.services.incident_detector import detect_incidents
 from app.services.projects import find_or_create_project
 
@@ -106,6 +107,8 @@ def save_logs(db, logs, project):
     db.add_all(logs)
     db.commit()
     detect_incidents(db, project.id)
+    # Recalculate the project's telemetry from its logs (traces, latency, activity)
+    log_telemetry.rebuild(db, project.id)
 
 
 @router.post("", response_model=LogOut, status_code=201)
@@ -372,6 +375,7 @@ def delete_log(log_id: int, db: Session = Depends(get_db)):
     db.delete(log)
     db.commit()
     detect_incidents(db, project_id)
+    log_telemetry.rebuild(db, project_id)
     return {"deleted": 1}
 
 
@@ -384,7 +388,9 @@ def delete_all_logs(project_id: Annotated[int | None, Query(ge=1)] = None, db: S
         query = query.where(Log.project_id == project_id)
         incidents = incidents.where(Incident.project_id == project_id)
     result = db.execute(query)
-    # Incidents without logs mean nothing, so they go too
+    # Incidents without logs mean nothing, so they go too, and so does the
+    # telemetry calculated from those logs
     db.execute(incidents)
     db.commit()
+    log_telemetry.clear(db, project_id)
     return {"deleted": result.rowcount}

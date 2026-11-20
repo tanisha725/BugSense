@@ -224,6 +224,16 @@ export function getTrace(traceId) {
   return request(`/telemetry/traces/${traceId}`)
 }
 
+// First and last moment of a project's telemetry (for data from the past)
+export function getTelemetryRange(projectId) {
+  return request(`/telemetry/range${queryString({ project_id: projectId })}`)
+}
+
+// Recalculates a project's telemetry from its logs
+export function telemetryFromLogs(projectId) {
+  return request(`/telemetry/from-logs${queryString({ project_id: projectId })}`, { method: 'POST' })
+}
+
 // ---------- Investigation tools ----------
 
 export function getTools() {

@@ -16,7 +16,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.models import Log, MetricPoint, Span
 
@@ -196,6 +196,51 @@ def process_numbers(db, project_id, service, since, until, seconds):
     }
 
 
+def log_activity(points, seconds):
+    """Logs per minute and the share of error logs, from the "log.records"
+    metric that BugSense calculates from uploaded logs."""
+    total = sum(point.value for point in points)
+    errors = sum(point.value for point in points if (point.attributes or {}).get("severity") in ("ERROR", "CRITICAL"))
+    return {
+        "log_count": int(total),
+        "error_logs": int(errors),
+        "log_error_rate": round(errors / total, 4) if total else 0.0,
+        "logs_per_minute": round(total * 60 / seconds, 2),
+    }
+
+
+def data_source(db, project_id, service, since, until):
+    """"otel" (measured), "logs" (calculated from logs) or "both"."""
+    sources = set()
+    for model, moment in ((Span, Span.start_time), (MetricPoint, MetricPoint.time)):
+        query = select(model.source).where(model.service == service, moment >= since, moment <= until).distinct()
+        if project_id:
+            query = query.where(model.project_id == project_id)
+        sources.update(db.scalars(query))
+    if sources == {"logs"}:
+        return "logs"
+    return "both" if len(sources) > 1 else "otel"
+
+
+def time_range(db, project_id=None):
+    """The first and last moment of a project's telemetry, so data from the
+    past (uploaded logs) can be shown with its own time range."""
+    span_query = select(func.min(Span.start_time), func.max(Span.end_time))
+    point_query = select(func.min(MetricPoint.time), func.max(MetricPoint.time))
+    if project_id:
+        span_query = span_query.where(Span.project_id == project_id)
+        point_query = point_query.where(MetricPoint.project_id == project_id)
+    moments = [as_utc(value) for value in (*db.execute(span_query).one(), *db.execute(point_query).one()) if value]
+    if not moments:
+        return {"first": None, "last": None, "minutes": 0}
+    first, last = min(moments), max(moments)
+    return {
+        "first": first.isoformat(),
+        "last": last.isoformat(),
+        "minutes": max(1, math.ceil((last - first).total_seconds() / 60)),
+    }
+
+
 # ---------- What the API and the tools ask for ----------
 
 
@@ -223,12 +268,18 @@ def service_overview(db, project_id=None, window_minutes=5, service=None, until=
     result = []
     for name in names:
         service_spans = by_service.get(name, [])
-        last = max((as_utc(span.end_time) for span in service_spans), default=None)
+        activity = metric_points(db, project_id, name, "log.records", since, end)
+        last = max(
+            [as_utc(span.end_time) for span in service_spans] + [as_utc(point.time) for point in activity],
+            default=None,
+        )
         result.append(
             {
                 "service": name,
                 **red_numbers(service_spans, seconds),
                 **process_numbers(db, project_id, name, since, end, seconds),
+                **log_activity(activity, seconds),
+                "source": data_source(db, project_id, name, since, end),
                 "last_seen": last.isoformat() if last else None,
             }
         )

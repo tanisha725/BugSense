@@ -29,11 +29,16 @@ def add_new_columns():
     """create_all() makes new tables, but never changes a table that already
     exists. Columns added in later phases are added here by hand. (A real
     product would use a migration tool such as Alembic.)"""
-    columns = {column["name"] for column in inspect(engine).get_columns("logs")}
-    if "trace_id" not in columns:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE logs ADD COLUMN trace_id VARCHAR(32)"))
-            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_logs_trace_id ON logs (trace_id)"))
+    added = [
+        ("logs", "trace_id", "VARCHAR(32)"),
+        ("spans", "source", "VARCHAR(10) NOT NULL DEFAULT 'otel'"),
+        ("metric_points", "source", "VARCHAR(10) NOT NULL DEFAULT 'otel'"),
+    ]
+    for table, column, kind in added:
+        if column not in {item["name"] for item in inspect(engine).get_columns(table)}:
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {kind}"))
+                connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} ON {table} ({column})"))
 
 
 @asynccontextmanager

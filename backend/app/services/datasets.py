@@ -19,6 +19,7 @@ from pathlib import Path
 from sqlalchemy import delete
 
 from app.models import Incident, Log
+from app.services import log_telemetry
 from app.services.incident_detector import detect_incidents
 from app.services.log_formats import match_known_format
 from app.services.log_parser import normalize_severity, parse_log, split_into_entries
@@ -272,4 +273,5 @@ def import_dataset(db, key):
     db.add_all(logs)
     db.commit()
     detect_incidents(db, project.id)
+    log_telemetry.rebuild(db, project.id)
     return project, len(logs)

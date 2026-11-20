@@ -16,6 +16,7 @@ from sqlalchemy import delete
 from app.database import SessionLocal
 from app.models import Incident, Log
 from app.services.datasets import DATASETS, parse_entry, read_entries
+from app.services import log_telemetry
 from app.services.incident_detector import detect_incidents
 from app.services.projects import find_or_create_project
 
@@ -44,6 +45,7 @@ def start(key, speed):
         db.execute(delete(Log).where(Log.project_id == project.id))
         db.execute(delete(Incident).where(Incident.project_id == project.id))
         db.commit()
+        log_telemetry.clear(db, project.id)
         project_id = project.id
 
     entries = read_entries(key)
@@ -72,7 +74,7 @@ def stop():
 
 def run(entries, dataset, project_id, speed, pause_seconds=1.0):
     """The work done by the background thread: one batch of lines every second."""
-    for start_index in range(0, len(entries), speed):
+    for batch_number, start_index in enumerate(range(0, len(entries), speed)):
         if _stop_signal.is_set():
             break
         batch = entries[start_index : start_index + speed]
@@ -83,9 +85,14 @@ def run(entries, dataset, project_id, speed, pause_seconds=1.0):
                 fields["timestamp"] = now  # "happening now"; the original time stays in raw
                 db.add(Log(project_id=project_id, raw=entry, **fields))
             db.commit()
-            # Incidents appear and grow while the stream runs
+            # Incidents appear and grow while the stream runs, and the
+            # telemetry calculated from the logs follows every 5 seconds
             detect_incidents(db, project_id)
+            if batch_number % 5 == 0:
+                log_telemetry.rebuild(db, project_id)
         _state["sent"] += len(batch)
         # wait() returns early if stop() is called during the pause
         _stop_signal.wait(pause_seconds)
+    with session_factory() as db:
+        log_telemetry.rebuild(db, project_id)
     _state["running"] = False

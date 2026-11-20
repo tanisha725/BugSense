@@ -14,14 +14,16 @@ from starlette.requests import ClientDisconnect
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services import otlp, telemetry
+from app.models import Project
+from app.services import log_telemetry, otlp, telemetry
 
 receiver = APIRouter(tags=["telemetry"])
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 MAX_BODY = 8 * 1024 * 1024  # 8 MB per export
 
-Window = Annotated[int, Query(ge=1, le=1440, description="How many minutes back to look")]
+# Up to 30 days, so uploaded logs from the past can be shown in one view
+Window = Annotated[int, Query(ge=1, le=43200, description="How many minutes back to look")]
 ProjectId = Annotated[int | None, Query(ge=1)]
 
 
@@ -142,3 +144,19 @@ def trace_detail(
     if trace is None:
         raise HTTPException(status_code=404, detail="Trace not found")
     return trace
+
+
+@router.get("/range")
+def data_range(project_id: ProjectId = None, db: Session = Depends(get_db)):
+    """The first and last moment of the telemetry (to show past data, such as uploaded logs)."""
+    return telemetry.time_range(db, project_id)
+
+
+@router.post("/from-logs")
+def telemetry_from_logs(project_id: Annotated[int, Query(ge=1)], db: Session = Depends(get_db)):
+    """Recalculates a project's telemetry from its logs: traces from request
+    IDs, latency from durations in the text, and log activity per minute.
+    (It also happens on its own after every upload.)"""
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return log_telemetry.rebuild(db, project_id)

@@ -122,6 +122,9 @@ class Span(Base):
     status: Mapped[str] = mapped_column(String(10), default="UNSET")
     status_message: Mapped[str | None] = mapped_column(Text)
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    # "otel" = measured and sent over OpenTelemetry,
+    # "logs" = calculated by BugSense from uploaded logs
+    source: Mapped[str] = mapped_column(String(10), default="otel", index=True)
 
 
 class MetricPoint(Base):
@@ -151,6 +154,8 @@ class MetricPoint(Base):
     bounds: Mapped[list | None] = mapped_column(JSON)
     bucket_counts: Mapped[list | None] = mapped_column(JSON)
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+    # "otel" = measured, "logs" = calculated from uploaded logs
+    source: Mapped[str] = mapped_column(String(10), default="otel", index=True)
 
 
 class Diagnosis(Base):

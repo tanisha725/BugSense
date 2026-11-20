@@ -34,6 +34,13 @@ investigator when no AI key is set.
   rate, latency p50/p95/p99, CPU and memory per service, any metric over time,
   and each request as a waterfall. High error rate or latency raises an alert
   that joins the incident
+- **Telemetry from uploaded logs:** for logs that are uploaded, pasted or
+  imported, BugSense calculates telemetry from the logs themselves: traces
+  from shared request IDs, latency from durations written in the text ("in
+  19 ms", "took 2.3 s", OpenStack's "time: 0.27"), and logs per minute and error
+  share for every service. It is marked "From logs" (measured data is marked
+  "Measured"), is recalculated after every upload, and the Telemetry page's
+  "All data" view shows data from the past
 - Incident detection: problems close together in time (10-minute gap) are
   grouped into one incident, rated CRITICAL / HIGH / MEDIUM / LOW by clear
   rules, with the reason shown; incidents can be resolved and kept as history
@@ -214,6 +221,8 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 | GET    | `/telemetry/series` | One metric over time (`metric`, `service`, `window_minutes`, `step_seconds`, `aggregation`, `until`) |
 | GET    | `/telemetry/traces` | Recent requests (`service`, `status`, `min_duration_ms`, `window_minutes`, `limit`, `until`) |
 | GET    | `/telemetry/traces/{trace_id}` | One request as a span tree, with its logs (`include_logs`) |
+| GET    | `/telemetry/range` | First and last moment of a project's telemetry (`project_id`) |
+| POST   | `/telemetry/from-logs` | Recalculates a project's telemetry from its logs (`project_id`) |
 | GET    | `/tools` | The 9 investigation tools with their parameter schemas |
 | POST   | `/tools/{name}` | Runs one tool; the JSON body is its parameters |
 | GET    | `/tools/config` | Whether an AI model is set up, and which one |

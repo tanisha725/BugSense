@@ -2763,3 +2763,28 @@ code {
     margin-left: 0;
   }
 }
+
+.source-tag {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+}
+
+.source-otel {
+  color: #0b6b0b;
+  background: rgba(12, 163, 12, 0.12);
+}
+
+.source-logs {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.source-both {
+  color: #7a5200;
+  background: rgba(250, 178, 25, 0.18);
+}

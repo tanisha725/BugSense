@@ -207,7 +207,7 @@ def telemetry_window(incident, facts):
     window = {"project_id": incident.project_id, "window_minutes": 15}
     if facts.get("first_seen") and facts.get("last_seen"):
         duration = int((facts["last_seen"] - facts["first_seen"]).total_seconds() // 60)
-        window["window_minutes"] = max(5, min(1440, duration + 6))
+        window["window_minutes"] = max(5, min(43200, duration + 6))
         window["until"] = (facts["last_seen"] + timedelta(minutes=1)).isoformat()
     return window
 

@@ -251,5 +251,7 @@ def test_refused_tool_call_is_explained_to_the_model(client, monkeypatch):
     result = client.post(f"/incidents/{incident}/diagnose", params={"engine": "llm"}).json()
     assert result["engine"] == "llm"
     assert "was refused" in attempts[1]
-    # No monitor and no telemetry for this project: only log search is offered
-    assert offered[0] == ["search_logs"]
+    # Not the monitored demo shop: no process status tool. The uploaded logs
+    # have request IDs, so telemetry was calculated and its tools are offered.
+    assert "get_service_status" not in offered[0]
+    assert {"search_logs", "get_service_metrics", "get_trace"} <= set(offered[0])
