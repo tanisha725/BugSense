@@ -109,7 +109,8 @@ AI model.
 ```
 Logs ──────────────► Parsing ─► Grouping into incidents ─► Diagnosis
 OpenTelemetry ─────► traces, metrics, alerts ─┘               │
-(OTLP: /v1/traces, /v1/metrics, /v1/logs)                     ├─ AI agent + 9 tools
+(OTLP: /v1/traces, /v1/metrics, /v1/logs)                     ├─ root cause ordering (Phase 8)
+                                                              ├─ AI agent + 10 tools
 Process monitor ───► crashes, restarts, health ─┘             └─ or rule-based investigator
 ```
 
@@ -118,7 +119,8 @@ Process monitor ───► crashes, restarts, health ─┘             └─
 | Data | Six Loghub datasets (12,000 lines) plus a live three-service demo shop |
 | Telemetry | Receives OpenTelemetry traces, metrics and logs; computes request rate, error rate, latency p50/p95/p99, CPU and memory; raises alerts |
 | Grouping | Time-burst grouping with rule-based severity and visible reasons |
-| Diagnosis | 9 investigation tools; an AI agent (free model) or the rules call them; answer with root service, confidence and evidence |
+| Root cause ordering | Services ranked from probable origin to affected, from request IDs, trace IDs, named services, the earliest error and crashes; the chain of how the failure spread |
+| Diagnosis | 10 investigation tools; an AI agent (free model) or the rules call them; answer with root service, confidence and evidence |
 
 ---
 
@@ -217,6 +219,32 @@ failure the rules missed. It is only **partly** right: it names the
 ResourceManager as the root service, while the real cause was the network
 between the machines, not the ResourceManager itself.
 
+### 6.5 Root cause ordering (Phase 8)
+
+Does the ranking put the true origin first? Live scenarios (no AI involved):
+
+| Scenario | True origin | Ranked first | Score | Failure chain found | Confidence |
+|---|---|---|---|---|---|
+| Database goes down | shop-db (writes no logs) | **shop-db** ✔ | 95 | shop-db → shop-api (15×) → shop-web (14×) | high |
+| Crash loop | shop-api | **shop-api** ✔ | 95 | shop-api → shop-web (19×) | high |
+| Wrong configuration | shop-api | **shop-api** ✔ | 110 | shop-api → shop-web (14×) | high |
+| Slow API | shop-api | **shop-api** ✔ | 58 (shop-web 42) | mixed: shop-web → shop-api (6×), shop-api → shop-web (4×) | medium |
+
+4 of 4 ranked first; 3 with high confidence. The slow API is harder: the
+caller (shop-web) gives up and logs its timeout **before** the slow service
+finishes, so "who failed first" points the wrong way in about half the
+requests. The errors that name shop-api ("did not answer") and the deepest
+failing step in all 11 failed traces still put shop-api on top. Ordering by
+time alone is weak for slowness; traces are what fix it. The database case matters most: shop-db is stopped and
+writes nothing, yet it is ranked first, because it failed first in all 15
+failed requests (named by shop-api's errors) and was the deepest failing step
+in all 15 failed traces. This is the cascade that GRLIA learns from failure
+history, found here from one incident's own evidence.
+
+On the Loghub datasets without request IDs (Hadoop, Apache, OpenSSH) only the
+earliest error is available, so the ranking says **low confidence** instead
+of pretending to know more.
+
 ---
 
 ## 7. Limitations and future work
@@ -229,8 +257,10 @@ between the machines, not the ResourceManager itself.
 - **Few labelled incidents** (four scenarios and one dataset failure), so no
   precision or recall yet.
 - **Rules on unfamiliar systems** only find the earliest error.
-- **Next:** root cause ordering with request IDs and trace IDs across services
-  (Phase 8), and a labelled set of incidents to compare rules and AI.
+- **Root cause ordering needs request IDs or traces** to be confident; with
+  only timestamps it gives a low-confidence starting point.
+- **Next:** a labelled set of incidents to compare rules, ranking and AI, a
+  downloadable incident report, login, and deployment.
 
 ---
 

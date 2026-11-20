@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import BarList from '../components/BarList.jsx'
 import DiagnosisPanel from '../components/DiagnosisPanel.jsx'
+import RootCausePanel from '../components/RootCausePanel.jsx'
 import LogTable from '../components/LogTable.jsx'
 import StatCard from '../components/StatCard.jsx'
 import { getIncident, setIncidentStatus } from '../services/api.js'
@@ -89,6 +90,8 @@ function IncidentDetail({ live }) {
           note={`${incident.log_count.toLocaleString()} logs in total`}
         />
       </div>
+
+      <RootCausePanel incidentId={incident.id} live={live} />
 
       <DiagnosisPanel incidentId={incident.id} />
 

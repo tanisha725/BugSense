@@ -34,6 +34,7 @@ from sqlalchemy import select
 from app.models import Diagnosis
 from app.services import monitor, tools
 from app.services.incidents import incident_facts, incident_logs
+from app.services.root_cause import TARGET_PATTERNS
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -51,11 +52,6 @@ FOLLOW_UP_TOOLS = ("search_logs", "get_service_status", "get_service_metrics",
                    "get_metric_series", "search_traces", "get_trace")
 TELEMETRY_TOOLS = ("get_service_metrics", "get_metric_series", "search_traces", "get_trace")
 
-# How an error names the service it could not reach
-TARGET_PATTERNS = [
-    re.compile(r"\bconnect(?:ion|ing)? to ([A-Za-z][\w.-]*[A-Za-z0-9])"),
-    re.compile(r"\b([A-Za-z][\w.-]*[A-Za-z0-9]) (?:unreachable|did not answer|is down|not responding)"),
-]
 REQUEST_TIMEOUT = 60
 
 SYSTEM_PROMPT = """You are BugSense's incident investigator, helping a developer find the probable root cause of a software incident.
@@ -65,6 +61,7 @@ How to work:
 - "Stopped for restart" and "Started" events are planned restarts, not crashes. High p95 latency with timeouts in callers means a slow service.
 - Call more tools only when the case file is not enough, and at most a few. For example: search_logs for a service that the errors point at, get_service_metrics or search_traces and get_trace for OpenTelemetry data.
 - If errors in one service point at another (connection refused, timeout, upstream error), the other service is the likely origin.
+- The case file includes a root cause ranking (origin vs affected services, with reasons). Use it as evidence, but check it against the logs.
 - The root cause is where the problem BEGAN, not where it was noticed.
 - Use only facts returned by the tools. Never invent log lines, numbers or services.
 - Be honest about uncertainty: this is a probable cause, not a certainty.
@@ -235,6 +232,16 @@ def case_file(db, incident, facts, steps):
             case["monitor_events"] = [
                 f"{event['service']}: {event['message']}" for event in status["events"]
             ]
+    ranking = _call(db, steps, "rank_root_causes", incident_id=incident.id, top=4)
+    if ranking and ranking["ranking"]:
+        case["root_cause_ranking"] = {
+            "method": ranking["method"],
+            "confidence": ranking["confidence"],
+            "services": [
+                {key: item[key] for key in ("service", "score", "role", "reasons")} for item in ranking["ranking"]
+            ],
+            "failure_spread": [f"{edge['from']} -> {edge['to']} ({edge['count']}x)" for edge in ranking["propagation"][:4]],
+        }
     metrics = _call(db, steps, "get_service_metrics", **telemetry_window(incident, facts))
     if metrics and metrics["services"]:
         case["telemetry_per_service"] = [
@@ -347,6 +354,8 @@ def investigate_with_rules(db, incident, facts):
     problems = _call(db, steps, "search_logs", incident_id=incident.id, min_severity="WARNING", limit=100)
     logs = problems["logs"] if problems else []
     first_errors = timeline["first_errors"] if timeline else []
+    ranked = _call(db, steps, "rank_root_causes", incident_id=incident.id, top=4)
+    top_ranked = ranked["ranking"][0] if ranked and ranked["ranking"] else None
 
     monitored = project_id == monitor.project_id_if_known()
     status = _call(db, steps, "get_service_status", event_limit=20, **event_window(facts)) if monitored else None
@@ -477,6 +486,15 @@ def investigate_with_rules(db, incident, facts):
             fixes = [f"Check {root}: is it running, healthy and reachable at the address the callers use?"]
         if root in process and process[root].get("healthy") is False:
             evidence.append(f"get_service_status: {root} fails its health check")
+    elif top_ranked and ranked["method"] == "requests" and ranked["confidence"] != "low":
+        # Request IDs show who failed first in each request: stronger than one earliest error
+        root = top_ranked["service"]
+        affected = [item["service"] for item in ranked["ranking"][1:] if item["role"] == "affected"]
+        cause = f"The failures start in {root}" + (
+            f"; {', '.join(affected)} fail after it in the same requests." if affected else "."
+        )
+        confidence = "medium"
+        fixes = [f"Start with the first errors of {root} in the failed requests"]
     elif first_errors:
         first = first_errors[0]
         root = first["service"]
@@ -494,6 +512,14 @@ def investigate_with_rules(db, incident, facts):
         cause = f"Repeated {top} in {root or 'the system'}, without errors. Probably a symptom to watch, not an outage."
         fixes = ["Check whether these warnings are expected"]
 
+    if top_ranked and top_ranked["score"] > 0:
+        evidence.append(
+            f"rank_root_causes: {top_ranked['service']} is the probable origin "
+            f"(score {top_ranked['score']}: {'; '.join(top_ranked['reasons'][:2])})"
+        )
+        if ranked["propagation"]:
+            chain = ranked["propagation"][0]
+            evidence.append(f"rank_root_causes: the failure spread {chain['from']} -> {chain['to']} ({chain['count']}x)")
     alert = logs_with("Telemetry:", levels=("ERROR", "WARNING"))
     if alert:
         evidence.append(f"search_logs: telemetry alert in {alert[0]['service']}: \"{alert[0]['message'][11:150]}\"")

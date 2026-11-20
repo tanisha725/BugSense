@@ -5,7 +5,8 @@ Simple explanations of everything built so far. Updated after every phase.
 **Built so far:** Phase 1 (Foundation), Phase 2 (Database), Phase 3 (Log ingestion),
 Phase 4 (Log processing), real-world data, live mode, the new interface,
 Phase 5 (Incident detection), Phase 6 (Service monitoring), OpenTelemetry
-monitoring, Phase 7 (AI diagnosis with tools), and the Huawei pitch
+monitoring, Phase 7 (AI diagnosis with tools), Phase 8 (root cause
+ordering), and the Huawei pitch
 
 ---
 
@@ -32,7 +33,8 @@ picks out its time, severity, service, error type, request ID and stack
 trace. Related failures are then grouped into incidents, each with a
 severity, a title and its evidence. The demo shop is monitored with
 OpenTelemetry (traces and metrics). For any incident, BugSense finds the
-probable cause with 9 investigation tools, used by an AI agent or by rules.
+probable cause with 10 investigation tools, used by an AI agent or by rules,
+and ranks the services from where the failure started to where it spread.
 
 ---
 
@@ -1044,7 +1046,7 @@ Reading the headers in lower case fixed it.
 investigator calls **tools** to collect evidence, then gives the probable
 cause, the root service, a confidence, the evidence and suggested fixes.
 
-**The 9 tools (all read-only):**
+**The 10 tools (all read-only):**
 
 | Tool | Question it answers |
 |---|---|
@@ -1057,6 +1059,7 @@ cause, the root service, a confidence, the evidence and suggested fixes.
 | `get_metric_series` | One metric over time: when did it change? |
 | `search_traces` | Find the failed or slow requests |
 | `get_trace` | Follow one request hop by hop |
+| `rank_root_causes` | Which service did the failure **start** in? (Phase 8) |
 
 **"All tool parameters completely implemented" (professor's feedback):**
 every parameter is a field of a **Pydantic model**. That one model:
@@ -1169,6 +1172,67 @@ as a repeatable baseline.
 **Why is the diagnosis linked to the first log, not the incident id?**
 Detection rebuilds open incidents, which can change their id. The first log
 of an incident stays the same, so earlier diagnoses are found again.
+
+---
+
+## Phase 8 — Root cause ordering
+
+**The problem:** an incident lists every service that failed, but most of
+them are only victims. When the database stops, shop-api fails because it
+cannot reach the database, and shop-web fails because shop-api returns errors.
+The database itself writes **nothing**, because it is stopped.
+
+**What I built:** on every incident page, a card **"Where did it start?"**:
+the services ranked from **probable origin** to **affected**, with points and
+the reason for each point, the **chain** of how the failure spread, and one
+failed request step by step. It is also the 10th tool, and part of the AI's
+case file.
+
+**The evidence, and the points it gives:**
+
+| Evidence | Points | Plain meaning |
+|---|---|---|
+| Failed first in the requests | up to 50 | Logs with the same request ID are one request. Who failed first in it? |
+| Named by other services' errors | up to 25 | "connection to **shop-db** failed": the error points at shop-db |
+| Deepest failing step in traces | up to 10 | In a failed trace, the innermost failing step is where it began |
+| Earliest error of the incident | 15 | Who had the first error at all |
+| Process monitor saw it stop or crash | 10 | A planned restart does not count |
+
+**How a silent service gets found:** in each failed request, shop-api fails
+first, but its error says "connection to shop-db failed". So shop-db is put
+in front: it becomes the origin of that request, even with no logs of its own.
+
+**Results:** all 4 live scenarios rank the true origin first (3 with high
+confidence, the slow API with medium). Database down: shop-db 95 points, chain shop-db → shop-api (15×)
+→ shop-web (14×). On datasets without request IDs, only the earliest error is
+known, so it honestly says "low confidence".
+
+> "An incident has a cause and its victims. Phase 8 separates them. For every
+> failed request it checks which service failed first, and whether that error
+> names another service. It adds evidence from traces and the process monitor,
+> gives points with reasons, and draws how the failure spread. In the database
+> scenario it ranks shop-db first although shop-db wrote no logs at all."
+
+### Likely questions
+
+**Why points and not machine learning?**
+Every point has a reason the engineer can check. A learned model, like GRLIA,
+needs failure history and cannot explain its answer.
+
+**How is this related to GRLIA?**
+GRLIA learns how failures cascade from past failures. BugSense sees the cascade
+directly in one incident's requests and traces, without history.
+
+**What if there are no request IDs?**
+Then only the order in time and the named services are left. The ranking still
+gives a starting point, but marks it "low confidence".
+
+**Why does the slow API only get medium confidence (58 vs 42 points)?**
+When a service is slow, the caller gives up first: shop-web logs its timeout
+before shop-api finishes, so shop-web "failed first" in 6 of 11 requests. But
+shop-web's errors name shop-api ("did not answer"), and shop-api is the
+deepest failing step in all 11 failed traces, so shop-api still comes first.
+Lesson: for slowness, traces are better evidence than the order of logs.
 
 ---
 

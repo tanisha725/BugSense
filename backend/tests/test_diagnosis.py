@@ -161,7 +161,7 @@ def test_ai_agent_loop_with_a_fake_model(client, monkeypatch):
     assert result["engine"] == "llm" and result["root_service"] == "shop-db"
     # The case file is gathered first, then the model's own calls follow
     assert [step["tool"] for step in result["steps"] if step.get("prefetched")] == [
-        "get_incident", "get_error_timeline", "get_service_metrics"
+        "get_incident", "get_error_timeline", "rank_root_causes", "get_service_metrics"
     ]
     own = [step for step in result["steps"] if not step.get("prefetched")]
     assert [(step["tool"], step["ok"]) for step in own] == [("search_logs", False), ("search_logs", True)]

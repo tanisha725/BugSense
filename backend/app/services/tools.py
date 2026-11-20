@@ -25,9 +25,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from sqlalchemy import func, select
 
 from app.models import Incident, Log
-from app.services import monitor, telemetry
+from app.services import monitor, root_cause, telemetry
 from app.services.incident_detector import ERROR_LEVELS, error_label
-from app.services.incidents import find_incidents, incident_evidence
+from app.services.incidents import find_incidents, incident_evidence, incident_facts
 
 LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 TRACE_ID = r"^[0-9a-fA-F]{32}$"
@@ -354,6 +354,25 @@ def get_trace(db, p: GetTrace):
     return trace
 
 
+# ---------- 10. rank_root_causes ----------
+
+
+class RankRootCauses(Params):
+    incident_id: int = Field(ge=1, description="The incident to analyse.")
+    top: int = Field(5, ge=1, le=20, description="How many services of the ranking to return.")
+
+
+def rank_root_causes(db, p: RankRootCauses):
+    """Which service the failure started in, and which ones only failed after it."""
+    incident = db.get(Incident, p.incident_id)
+    if incident is None:
+        raise ToolError(f"Incident {p.incident_id} not found", 404)
+    facts = incident_facts(db, [incident.id]).get(incident.id, {})
+    result = root_cause.rank(db, incident, facts)
+    result["ranking"] = result["ranking"][: p.top]
+    return result
+
+
 # ---------- The registry ----------
 
 TOOLS = {
@@ -391,6 +410,11 @@ TOOLS = {
     "get_trace": (
         GetTrace, get_trace,
         "Follow one request across services, span by span, with its logs.",
+    ),
+    "rank_root_causes": (
+        RankRootCauses, rank_root_causes,
+        "Rank the services of an incident from probable origin to affected, with the reasons, "
+        "and show how the failure spread (for example shop-db -> shop-api -> shop-web).",
     ),
 }
 

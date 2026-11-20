@@ -24,7 +24,8 @@ checkable evidence is hard to trust during an outage.
 |---|---|
 | Group the flood of errors | Incidents from time bursts, severity with stated reasons |
 | See the cascade | OpenTelemetry traces: web → api → db, with the failing hop |
-| Probable cause | 9 investigation tools, used by an AI agent or by rules |
+| Where it started | Services ranked from probable origin to affected, with the failure chain (shop-db → shop-api → shop-web) |
+| Probable cause | 10 investigation tools, used by an AI agent or by rules |
 | Trust | Every answer lists its evidence and the tool each fact came from; every tool call is shown |
 | Safety | Tools only read. BugSense never runs commands in production |
 

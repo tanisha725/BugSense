@@ -6,21 +6,29 @@ BugSense will analyze application logs, errors and container events, group
 related failures into incidents, and help developers find the probable root
 cause. The project is built phase by phase.
 
-**Current status: Phase 7 (AI diagnosis with tools) and OpenTelemetry
-monitoring.** Logs can be pasted, uploaded, imported from six real-world
+**Current status: Phase 8 (root cause ordering), on top of AI diagnosis with
+tools (Phase 7) and OpenTelemetry monitoring.** Logs can be pasted, uploaded, imported from six real-world
 datasets, streamed in live, or received over OpenTelemetry. Related failures
 are grouped into incidents. BugSense runs a three-service demo shop and
 monitors it with **OpenTelemetry** traces and metrics (requests, error rate,
 latency, CPU, memory). For any incident it finds the **probable cause** with
-9 investigation tools, used by an AI agent (a free model) or by a rule-based
-investigator when no AI key is set.
+10 investigation tools, used by an AI agent (a free model) or by a rule-based
+investigator when no AI key is set, and ranks the services from the one where
+the failure started to the ones that only failed after it.
 
 ## Features so far
 
+- **Root cause ordering (Phase 8):** every incident shows "Where did it
+  start?": its services ranked from probable origin to affected, with points
+  and reasons. Evidence: who failed first in each request (request IDs and
+  trace IDs), which service other services' errors name ("connection to
+  shop-db failed"), the deepest failing step in failed traces, the earliest
+  error, and process crashes. It also shows how the failure spread
+  (shop-db → shop-api → shop-web) and one failed request step by step
 - **AI diagnosis (Phase 7):** "Find probable cause" on any incident. An AI
-  agent calls 9 read-only investigation tools (incident, error timeline, log
+  agent calls 10 read-only investigation tools (incident, error timeline, log
   search, process status, telemetry metrics, metric series, trace search,
-  trace detail, incident list) and answers with the root service, confidence,
+  trace detail, incident list, root cause ranking) and answers with the root service, confidence,
   evidence and suggested fixes. Without an AI key a rule-based investigator
   uses the same tools. Every tool call, the tokens used and the evidence size
   are stored and shown
@@ -197,6 +205,7 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 | GET    | `/incidents/{id}` | One incident: reasons for its severity, services, error types, its logs in time order (`log_limit`, `errors_only`) |
 | POST   | `/incidents/{id}/diagnose` | Probable cause (`engine` = auto, llm or rules; `max_steps` 1–12) |
 | GET    | `/incidents/{id}/diagnoses` | Earlier diagnoses of the incident (`limit`) |
+| GET    | `/incidents/{id}/root-cause` | Services ranked from probable origin to affected, with reasons and the failure chain |
 | PATCH  | `/incidents/{id}` | Changes the status to `OPEN` or `RESOLVED` |
 | POST   | `/incidents/detect` | Runs incident detection again (one project or all) |
 | GET    | `/monitor` | Status, health, restarts and events of the demo services |
@@ -223,7 +232,7 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 | GET    | `/telemetry/traces/{trace_id}` | One request as a span tree, with its logs (`include_logs`) |
 | GET    | `/telemetry/range` | First and last moment of a project's telemetry (`project_id`) |
 | POST   | `/telemetry/from-logs` | Recalculates a project's telemetry from its logs (`project_id`) |
-| GET    | `/tools` | The 9 investigation tools with their parameter schemas |
+| GET    | `/tools` | The 10 investigation tools with their parameter schemas |
 | POST   | `/tools/{name}` | Runs one tool; the JSON body is its parameters |
 | GET    | `/tools/config` | Whether an AI model is set up, and which one |
 

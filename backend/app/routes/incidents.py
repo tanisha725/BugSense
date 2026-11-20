@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Incident, Project
-from app.services import diagnosis
+from app.services import diagnosis, root_cause
 from app.services.incident_detector import detect_incidents
-from app.services.incidents import find_incidents, incident_evidence
+from app.services.incidents import find_incidents, incident_evidence, incident_facts
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
@@ -87,6 +87,14 @@ def incident_detail(
     """One incident with its evidence. log_limit caps the logs returned;
     errors_only keeps only ERROR and CRITICAL logs."""
     return incident_evidence(db, get_incident(db, incident_id), log_limit, errors_only)
+
+
+@router.get("/{incident_id}/root-cause")
+def root_cause_ranking(incident_id: int, db: Session = Depends(get_db)):
+    """Phase 8: the services ranked from probable origin to affected, with the
+    reasons for every score, and how the failure spread between services."""
+    incident = get_incident(db, incident_id)
+    return root_cause.rank(db, incident, incident_facts(db, [incident_id]).get(incident_id, {}))
 
 
 class StatusChange(BaseModel):

@@ -124,6 +124,11 @@ export function diagnoseIncident(id, engine = 'auto') {
   return request(`/incidents/${id}/diagnose${queryString({ engine })}`, { method: 'POST' })
 }
 
+// Phase 8: services ranked from probable origin to affected
+export function getRootCause(id) {
+  return request(`/incidents/${id}/root-cause`)
+}
+
 export function getDiagnoses(id) {
   return request(`/incidents/${id}/diagnoses`)
 }
