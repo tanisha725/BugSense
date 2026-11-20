@@ -1,35 +1,55 @@
-# BugSense — Research Background and Comparison
+# BugSense — Research Background (Huawei)
 
 **Project:** BugSense, an intelligent debugging and incident analysis platform
 **Author:** Tanisha Sinha
 
-BugSense is compared with **two IEEE research papers from companies**. Each
-one matches a main part of BugSense:
+BugSense is compared with research from **one company, Huawei**: the paper
+GRLIA from Huawei Cloud, which matches BugSense's incident grouping.
 
-| | Paper | Company | IEEE venue | Matches BugSense part |
-|---|---|---|---|---|
-| **Paper 1** | GRLIA: Graph-based Incident Aggregation | **Huawei Cloud** (with CUHK) | IEEE/ACM ASE 2021 | Grouping errors into incidents (Phase 5) |
-| **Paper 2** | Recommending Root-Cause and Mitigation Steps for Cloud Incidents using LLMs | **Microsoft** (with UC Davis) | IEEE/ACM ICSE 2023 | AI diagnosis of incidents (Phase 7) |
+| Paper | Huawei team | Venue | Matches BugSense part |
+|---|---|---|---|
+| GRLIA: Graph-based Incident Aggregation | Huawei Cloud (with CUHK) | IEEE/ACM ASE 2021 | Grouping errors into incidents (Phase 5) |
 
-For each paper: what they did, what BugSense does, and what is new in
-BugSense.
+The pitch to Huawei (cost and workflow) is in [PITCH.md](PITCH.md).
 
 ---
 
 ## 1. Problem
 
-When software fails in production, developers face thousands of log lines
-from many services. They need two things:
+When software fails in production, engineers face millions of log lines,
+metrics and traces from many services. They need two things:
 
 1. **Grouping:** which of these errors are the same problem?
-2. **Explanation:** what probably caused it, and how can it be fixed?
+2. **Explanation:** what probably caused it, and what should be done?
 
-Paper 1 addresses the first need and Paper 2 the second. BugSense addresses
-both, in one tool.
+GRLIA addresses the first need at Huawei Cloud scale. BugSense addresses
+both in one small tool: it groups failures into incidents, then finds the
+probable cause (Phase 7).
 
 ---
 
-## 2. Paper 1 — GRLIA (Huawei Cloud, IEEE ASE 2021)
+## 2. Huawei as the company studied
+
+Huawei runs one of the large public clouds (Huawei Cloud). Its operations
+products are where a tool like BugSense would fit:
+
+| Huawei Cloud product | What it does | Relevance to BugSense |
+|---|---|---|
+| **AOM** (Application Operations Management) | Monitoring, alarms, metrics | Accepts data over **OpenTelemetry**, the same protocol BugSense receives |
+| **APM** (Application Performance Management) | Traces of requests across services | Compatible with the OpenTelemetry protocol; receives traces from OTel SDKs |
+| **LTS** (Log Tank Service) | Stores and searches logs | Billed by volume (read/write, indexing, storage); 500 MB free per month |
+
+Sources: Huawei Cloud documentation for AOM ("Ingesting Data to AOM Using
+Open-Source APIs and Protocols"), APM (OpenTelemetry best practices) and LTS
+billing. Prices and quotas change; check the Huawei Cloud price pages.
+
+**Why Huawei fits BugSense:** Huawei Cloud's monitoring already speaks
+OpenTelemetry, the protocol BugSense receives, and Huawei's own research
+(GRLIA) works on the same problem as BugSense's grouping step.
+
+---
+
+## 3. The paper — GRLIA (Huawei Cloud, IEEE/ACM ASE 2021)
 
 **Citation:** Z. Chen, J. Liu, Y. Su, H. Zhang, X. Wen, X. Ling, Y. Yang,
 and M. R. Lyu, "Graph-based Incident Aggregation for Large-Scale Online
@@ -39,143 +59,77 @@ Engineering (ASE)*, 2021, pp. 430–442, doi: 10.1109/ASE51524.2021.9678746.
 ### What they did
 
 - **Problem:** in a large cloud, one failure spreads to many services, and
-  each service raises its own incident. Engineers receive a flood of
-  separate incidents that all have the same cause.
-- **Method:** GRLIA learns how failures **cascade** from one service to
-  another. It uses graph representation learning on a graph of past failures,
-  plus detailed monitoring metrics (KPIs). Every type of incident becomes a
-  vector, and incidents with close vectors are grouped together.
-- **Data:** real incidents from Huawei Cloud.
-- **Result:** the authors report it beats earlier methods and has been
-  deployed in industry.
+  each raises its own incident. Engineers get a flood of separate incidents
+  with one cause.
+- **Method:** GRLIA learns how failures **cascade** between services, using
+  graph representation learning on past failures plus detailed monitoring
+  metrics (KPIs). Incidents with close vectors are grouped together.
+- **Data and result:** real incidents from Huawei Cloud; the authors report it
+  beats earlier methods and is deployed.
 
 ### Limits for a small team
 
-- It needs a **history of past failures** and fine-grained **metrics** to
-  learn from.
-- The grouping comes from a learned model, so it **cannot say why** two
-  incidents were grouped.
-- It is an internal company system, not a tool a student or small team can
-  run.
+- Needs a **history of failures** and fine-grained **metrics** to learn from.
+- A learned model **cannot say why** two incidents were grouped.
 
 ### What BugSense does instead (Phase 5)
 
-| | GRLIA (Huawei) | BugSense |
+| | GRLIA (Huawei Cloud) | BugSense |
 |---|---|---|
-| Input | Incidents + monitoring metrics + failure history | Raw logs only |
-| How it groups | Learned graph model | Simple rule: problems within 10 minutes of each other are one incident |
-| Training needed | Yes | No |
-| Explains its decision | No (vector similarity) | Yes: the reason for each severity is shown, e.g. "errors in 3 services at the same time" |
-| Where it runs | Huawei Cloud | A laptop |
+| Input | Incidents + KPIs + failure history | Raw logs, plus OpenTelemetry traces and metrics when available |
+| How it groups | Learned graph model | Rule: problems within 10 minutes of each other are one incident |
+| Training | Yes | None |
+| Explains itself | No | Yes: the reason for each severity is shown |
+| Cascade | Learned from history | Seen directly: one OpenTelemetry **trace** shows web → api → db and which hop failed |
 
-### What is new in BugSense compared with Paper 1
+### What is new compared with GRLIA
 
-1. **Explainable grouping:** published rules (CRITICAL, HIGH, MEDIUM and LOW
-   thresholds), with the reason shown on every incident page.
-2. **Works from raw logs alone,** with no history or training data, so it can
-   be used from the first day.
-3. **Process failures join the same incident.** BugSense's service monitor
-   (Phase 6) records crashes, crash loops and failed health checks as logs.
-   A crash and the errors it causes are therefore grouped together, which is
-   the cascade GRLIA learns, captured here by time instead of a learned
-   graph.
-
----
-
-## 3. Paper 2 — LLMs for root cause (Microsoft, IEEE ICSE 2023)
-
-**Citation:** T. Ahmed, S. Ghosh, C. Bansal, T. Zimmermann, X. Zhang, and
-S. Rajmohan, "Recommending Root-Cause and Mitigation Steps for Cloud
-Incidents using Large Language Models," *Proc. IEEE/ACM 45th Int. Conf.
-Software Engineering (ICSE)*, 2023, pp. 1737–1749,
-doi: 10.1109/ICSE48619.2023.00149.
-
-### What they did
-
-- **Problem:** finding the root cause of a cloud incident and deciding how
-  to fix it takes engineers a lot of time.
-- **Method:** large language models (GPT-3.x) receive the incident's
-  **title and summary**, as written when the incident was created, and
-  generate a likely root cause and mitigation steps. Zero-shot models
-  (no extra training) are compared with fine-tuned ones.
-- **Data:** more than **40,000 real incidents** from Microsoft.
-- **Evaluation:** automatic text-similarity metrics, plus a human evaluation
-  by the engineers who owned the incidents.
-
-### Limits for a small team
-
-- Fine-tuning needs **tens of thousands of past incidents**, which a small
-  team does not have.
-- The model sees only a short **text description**, not the actual error
-  logs, so it can produce answers that sound right but are not backed by
-  evidence.
-- It uses Microsoft's internal incident data and systems.
-
-### What BugSense will do (Phase 7, next)
-
-| | Microsoft study | BugSense |
-|---|---|---|
-| What the AI receives | Incident title and summary (text) | The incident's **structured evidence**: severity, services involved, first errors, error types, stack traces, crash and health events |
-| Training | Zero-shot and fine-tuned on 40,000+ incidents | No fine-tuning: a general model with a careful prompt |
-| How the answer is worded | Generated root cause and steps | Must say "probable", list the evidence it used, and state its limits |
-| Who decides | — | The developer; the AI's output is labelled as a suggestion |
-
-### What is new in BugSense compared with Paper 2
-
-1. **Grounded in evidence:** the AI receives facts that BugSense extracted and
-   grouped itself (Phases 4–6), not just a free-text summary.
-2. **No fine-tuning needed,** so it works without a history of past
-   incidents.
-3. **Honest about uncertainty:** the answer must use "probable" and list its
-   limitations, and it never runs commands by itself.
+1. **Explainable grouping** with published rules and visible reasons.
+2. **Works from day one,** no history needed.
+3. **The cascade is observed, not learned:** BugSense receives OpenTelemetry
+   traces, so it can show the exact chain of calls and the failing hop.
 
 ---
 
 ## 4. Research gap
 
-Both papers solve one step, using company-scale data:
+- GRLIA groups incidents, but needs failure history and metrics, does not
+  explain its grouping, and is internal to Huawei Cloud.
+- After grouping, finding the cause is still left to the engineers.
 
-- Paper 1 groups incidents, but needs metrics and failure history and does
-  not explain itself.
-- Paper 2 explains incidents, but needs tens of thousands of past incidents
-  and sees only a text summary.
-
-**Gap:** there is no open, lightweight tool that goes from **raw logs alone**
-to **explained incidents** to an **evidence-based probable cause**, runs on a
-laptop, and shows the reason for each decision.
+**Gap:** an open, lightweight tool that goes from **raw logs and standard
+OpenTelemetry data** to **explained incidents** to an **evidence-backed
+probable cause**, runs on a laptop with no training, and works even with no
+AI model.
 
 ---
 
 ## 5. What BugSense does (the whole pipeline)
 
 ```
-Raw logs → Parsing → Grouping into incidents → AI diagnosis
-           (Phase 4)  (Phase 5, vs Paper 1)    (Phase 7, vs Paper 2)
-                ↑
-   Service monitoring (Phase 6): crashes and health checks become logs
+Logs ──────────────► Parsing ─► Grouping into incidents ─► Diagnosis
+OpenTelemetry ─────► traces, metrics, alerts ─┘               │
+(OTLP: /v1/traces, /v1/metrics, /v1/logs)                     ├─ AI agent + 9 tools
+Process monitor ───► crashes, restarts, health ─┘             └─ or rule-based investigator
 ```
 
 | Step | What BugSense does |
 |---|---|
-| Data | Six real datasets from Loghub (12,000 lines), plus a live demo shop |
-| Parsing | Reads time, severity, service, error type, request ID and stack trace with rules |
+| Data | Six Loghub datasets (12,000 lines) plus a live three-service demo shop |
+| Telemetry | Receives OpenTelemetry traces, metrics and logs; computes request rate, error rate, latency p50/p95/p99, CPU and memory; raises alerts |
 | Grouping | Time-burst grouping with rule-based severity and visible reasons |
-| Monitoring | Starts and watches three demo services: restarts, crash loops, health checks |
-| AI diagnosis | Next phase: probable root cause from the structured evidence |
+| Diagnosis | 9 investigation tools; an AI agent (free model) or the rules call them; answer with root service, confidence and evidence |
 
 ---
 
-## 6. Evaluation so far
+## 6. Evaluation
 
 All numbers were measured on BugSense itself.
 
 ### 6.1 Parser accuracy on real data
 
-The six datasets come from **Loghub**, a public research collection of real
-system logs (J. Zhu *et al.*, IEEE ISSRE 2023, doi:
-10.1109/ISSRE59848.2023.00071). Loghub also publishes a CSV in which the
-researchers split every line into columns. BugSense parsed the raw files
-without reading the CSVs; every line was then compared with the same CSV row.
+BugSense parsed the six Loghub files without reading Loghub's CSVs, then every
+line was compared with the CSV row (J. Zhu *et al.*, IEEE ISSRE 2023).
 
 | Check | Lines matching | Result |
 |---|---|---|
@@ -183,9 +137,7 @@ without reading the CSVs; every line was then compared with the same CSV row.
 | Clock time | 12,000 / 12,000 | 100% |
 | Severity level (5 datasets with a Level column) | 10,000 / 10,000 | 100% |
 
-### 6.2 Incident grouping on real data (compare Paper 1)
-
-Number of incidents for different time gaps:
+### 6.2 Incident grouping on real data (compare GRLIA)
 
 | Gap | Apache | OpenSSH | HDFS | ZooKeeper | Hadoop | OpenStack |
 |---|---|---|---|---|---|---|
@@ -193,35 +145,92 @@ Number of incidents for different time gaps:
 | **10 min (chosen)** | **18** | **7** | **3** | **1** | **1** | **1** |
 | 30 min | 13 | 1 | 3 | 5 | 1 | 1 |
 
-The Hadoop dataset contains a real injected network failure. It becomes
-**one CRITICAL incident** (152 errors across 8 services), the cascade
-behaviour that GRLIA learns from data.
+### 6.3 Diagnosis on the four live scenarios with a known cause
 
-### 6.3 Scenarios with a known cause
+The demo shop was broken on purpose; telemetry, logs and process events were
+real. The fault name is never written into the logs (and the monitor only
+records a neutral "Stopped"), so the investigator has to find the cause from
+the evidence. Both engines were run.
 
-| Scenario | Known cause | What BugSense produced |
-|---|---|---|
-| Checkout outage sample | Database shut down | 1 CRITICAL incident across 3 services, titled with the database error |
-| Live: database goes down | shop-db stopped | shop-api reported unhealthy; 28 errors from 2 services became 1 incident |
-| Live: crash loop | shop-api crashes at start | Crash loop declared at the 3rd crash, CRITICAL incident |
-| Live: wrong configuration | Broken database address | "ConfigError" and "Startup failed", then a crash loop |
+**Rules engine:**
 
-These four known causes will also be used to test Phase 7: does the AI name
-the right probable cause?
+| Scenario | Known cause | Root service found | Probable cause given | Confidence |
+|---|---|---|---|---|
+| Database goes down | shop-db stopped | **shop-db** ✔ | "shop-db is not running … services that depend on it cannot reach it" | high |
+| Crash loop | shop-api crashes at start | **shop-api** ✔ | "crashes during start-up (RuntimeError: payment module failed to initialise: missing key 'currency')" | high |
+| Wrong configuration | broken database address | **shop-api** ✔ | "refuses to start because of an invalid configuration: … got "postgres//127.0.0.1:9102"" | high |
+| Slow API | shop-api hangs | **shop-api** ✔ | "responding too slowly (p95 latency 2277 ms), so the services calling it time out" | high |
+
+4 of 4 correct. Each used 7 tool calls and took under 25 ms. The evidence
+came from four kinds of data: logs, process status, an OpenTelemetry alert and
+a trace (for example, "in a failed request the deepest failing step is shop-api
+'shop-db SELECT' (connection refused)").
+
+**AI engine** (`openai/gpt-oss-20b` on Groq's free tier, real runs):
+
+| Scenario | Root service found | Probable cause given (shortened) | Confidence | Tokens | Time |
+|---|---|---|---|---|---|
+| Database goes down | **shop-db** ✔ | "shop-db stopped, causing shop-api to fail to connect and return 503 to shop-web" | high | 14,774 | 62.5 s |
+| Crash loop | **shop-api** ✔ | "a missing configuration key ('currency') caused the payment module to raise a RuntimeError, crashing the service" | high | 6,559 | 5.7 s |
+| Wrong configuration | **shop-api** ✔ | "SHOP_DB_URL was misconfigured (missing protocol prefix), so shop-api failed to start and entered a crash loop" | high | 9,247 | 15.5 s |
+| Slow API | **shop-api** ✔ | "a latency spike (p95 ≈ 2.8 s) caused shop-web requests to time out" | medium | 16,697 | 70.4 s |
+
+4 of 4 correct, on average **11,800 tokens** per diagnosis. Most of the time
+is waiting for the free tier's limit of 8,000 tokens per minute (BugSense waits
+and retries); the AI calls themselves take a few seconds.
+
+**What changed the AI's results while building it** (useful lessons):
+
+1. The first version gave the AI only the tools. Every step resent the whole
+   conversation, so one diagnosis needed more tokens than the free tier
+   allows per minute. BugSense now gathers a **case file** first (incident,
+   first errors, which service failed first, process status, telemetry
+   summary), and the AI only makes follow-up calls.
+2. Without the telemetry summary in the case file, the AI blamed the slow API
+   on a "crash" (it misread a planned restart). With the p95 latency in the
+   case file, it named the slowness correctly.
+3. Monitor events from an earlier problem misled the AI, so the status tool
+   got a `since` parameter, and the diagnosis passes the incident's start time.
+
+### 6.4 Diagnosis on real datasets, and evidence reduction
+
+On the Loghub datasets there is no telemetry and no process monitor, so the
+rules can only point at the earliest failure.
+
+| Dataset (largest incident) | Raw log characters | Evidence characters | Reduction | Rules result |
+|---|---|---|---|---|
+| Hadoop MapReduce | 174,768 | 9,337 (rules), 5,395 (AI) | **18.7×** (rules), **32.4×** (AI) | earliest failure only (low confidence) |
+| ZooKeeper | 151,806 | 7,747 | **19.6×** | earliest failure only |
+| OpenSSH | 64,346 | 7,195 | **8.9×** | earliest failure only |
+| Apache | 1,585 | 7,376 | 0.2× | small incident: evidence is larger than the logs |
+
+Honest reading: the evidence size stays around 7–9 K characters whatever the
+incident size, so the reduction grows with the incident. On Hadoop, which contains a known
+injected network failure, the rules did **not** name the network as the cause.
+
+**The AI on Hadoop** (10,941 tokens, 9.8 s): it searched the logs four times
+and found that RMContainerAllocator logged "ERROR IN CONTACTING RM." 147 times
+and that TaskAttemptListenerImpl hit `NoRouteToHostException`. Its answer:
+"RMContainerAllocator repeatedly failed to contact the ResourceManager …
+downstream services experience network errors". This finds the network
+failure the rules missed. It is only **partly** right: it names the
+ResourceManager as the root service, while the real cause was the network
+between the machines, not the ResourceManager itself.
 
 ---
 
 ## 7. Limitations and future work
 
+- **The AI's answers vary** from run to run (it is a language model); the
+  results above are single runs. A fair accuracy figure needs repeated runs.
+- **The free tier is slow under load:** 8,000 tokens per minute means a
+  diagnosis can wait up to a minute or two when several run back to back.
 - **Grouping by time** can join two unrelated problems that happen together.
-  GRLIA avoids this by learning failure cascades, at the cost of training
-  data.
-- **No labelled incidents yet,** so there are no precision and recall
-  figures.
-- **AI diagnosis (Phase 7)** is the next step, measured on the four known
-  scenarios.
-- **Root cause ordering (Phase 8)** will use the request IDs shared across
-  services to separate the first failure from the failures it caused.
+- **Few labelled incidents** (four scenarios and one dataset failure), so no
+  precision or recall yet.
+- **Rules on unfamiliar systems** only find the earliest error.
+- **Next:** root cause ordering with request IDs and trace IDs across services
+  (Phase 8), and a labelled set of incidents to compare rules and AI.
 
 ---
 
@@ -229,16 +238,14 @@ the right probable cause?
 
 [1] Z. Chen, J. Liu, Y. Su, H. Zhang, X. Wen, X. Ling, Y. Yang, and
 M. R. Lyu, "Graph-based Incident Aggregation for Large-Scale Online Service
-Systems," in *Proc. 36th IEEE/ACM Int. Conf. Automated Software Engineering
-(ASE)*, 2021, pp. 430–442, doi: 10.1109/ASE51524.2021.9678746.
-
-[2] T. Ahmed, S. Ghosh, C. Bansal, T. Zimmermann, X. Zhang, and
-S. Rajmohan, "Recommending Root-Cause and Mitigation Steps for Cloud
-Incidents using Large Language Models," in *Proc. IEEE/ACM 45th Int. Conf.
-Software Engineering (ICSE)*, 2023, pp. 1737–1749,
-doi: 10.1109/ICSE48619.2023.00149.
+Systems," in *Proc. 36th IEEE/ACM ASE*, 2021, pp. 430–442,
+doi: 10.1109/ASE51524.2021.9678746.
 
 Data source: J. Zhu, S. He, P. He, J. Liu, and M. R. Lyu, "Loghub: A Large
-Collection of System Log Datasets for AI-driven Log Analytics," in *Proc.
-IEEE 34th Int. Symp. Software Reliability Engineering (ISSRE)*, 2023,
-pp. 355–366, doi: 10.1109/ISSRE59848.2023.00071.
+Collection of System Log Datasets for AI-driven Log Analytics," in *Proc. IEEE
+34th ISSRE*, 2023, pp. 355–366, doi: 10.1109/ISSRE59848.2023.00071.
+
+Huawei Cloud documentation: AOM access overview and open-source protocol
+ingestion (support.huaweicloud.com/usermanual-aom2), APM OpenTelemetry best
+practices (support.huaweicloud.com/bestpractice-apm2), LTS billing
+(support.huaweicloud.com/price-lts).

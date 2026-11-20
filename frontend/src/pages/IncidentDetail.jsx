@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import BarList from '../components/BarList.jsx'
+import DiagnosisPanel from '../components/DiagnosisPanel.jsx'
 import LogTable from '../components/LogTable.jsx'
 import StatCard from '../components/StatCard.jsx'
 import { getIncident, setIncidentStatus } from '../services/api.js'
@@ -88,6 +89,8 @@ function IncidentDetail({ live }) {
           note={`${incident.log_count.toLocaleString()} logs in total`}
         />
       </div>
+
+      <DiagnosisPanel incidentId={incident.id} />
 
       <div className="detail-grid">
         <section className={`card dark why-card sev-${severity}`}>

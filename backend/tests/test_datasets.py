@@ -118,7 +118,7 @@ def test_csv_downloads(client):
     parsed = client.get("/datasets/hdfs/parsed.csv")
 
     assert original.text.startswith("LineId,Date,Time,Pid,Level,Component,Content")
-    assert parsed.text.startswith("line,timestamp,severity,service,error_type,request_id,message")
+    assert parsed.text.startswith("line,timestamp,severity,service,error_type,request_id,trace_id,message")
     assert len(parsed.text.strip().splitlines()) == 2001
 
 
@@ -126,6 +126,6 @@ def test_export_stored_logs_as_csv(client):
     client.post("/logs/text", json={"text": "ERROR [shop] TimeoutError: slow\nINFO [shop] ok"})
 
     lines = client.get("/logs/export", params={"severity": "ERROR"}).text.strip().splitlines()
-    assert lines[0] == "line,timestamp,severity,service,error_type,request_id,message"
+    assert lines[0] == "line,timestamp,severity,service,error_type,request_id,trace_id,message"
     assert len(lines) == 2
     assert ",ERROR,shop,TimeoutError,," in lines[1]

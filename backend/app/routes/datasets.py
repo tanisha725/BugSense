@@ -1,6 +1,8 @@
 """Real-world datasets: importing them, and replaying them live."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,9 @@ from app.services.datasets import (
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 ALLOWED_SPEEDS = {1, 2, 5, 10, 20}
+Offset = Annotated[int, Query(ge=0)]
+PageSize = Annotated[int, Query(ge=1, le=200)]
+Search = Annotated[str | None, Query(max_length=200)]
 
 
 def check_dataset(key):
@@ -63,12 +68,12 @@ def start_stream(key: str, speed: int = 5):
 
 
 @router.get("/{key}")
-def view_dataset(key: str, search: str | None = None, offset: int = 0, limit: int = 50):
+def view_dataset(key: str, search: Search = None, offset: Offset = 0, limit: PageSize = 50):
     """The dataset viewer: facts about the file, plus one page of its lines,
     each shown raw and as the fields the parser found."""
     check_dataset(key)
     dataset = get_dataset(key)
-    page = browse(key, search, max(0, offset), max(1, min(limit, 200)))
+    page = browse(key, search, offset, limit)
     return {
         "key": key,
         "name": dataset["name"],
@@ -90,10 +95,10 @@ def download_dataset(key: str):
 
 
 @router.get("/{key}/csv")
-def view_csv(key: str, search: str | None = None, offset: int = 0, limit: int = 50):
+def view_csv(key: str, search: Search = None, offset: Offset = 0, limit: PageSize = 50):
     """One page of Loghub's official CSV for this dataset, exactly as published."""
     check_dataset(key)
-    return browse_csv(key, search, max(0, offset), max(1, min(limit, 200)))
+    return browse_csv(key, search, offset, limit)
 
 
 @router.get("/{key}/csv/download")

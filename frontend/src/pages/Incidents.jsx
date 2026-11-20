@@ -12,6 +12,8 @@ const LEVELS = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 
 function Incidents({ project, projectId, live }) {
   const [status, setStatus] = useState('OPEN')
+  const [minSeverity, setMinSeverity] = useState('')
+  const [service, setService] = useState('')
   const [incidents, setIncidents] = useState(null)
   const [summary, setSummary] = useState(null)
   const [reloadCount, setReloadCount] = useState(0)
@@ -21,7 +23,10 @@ function Incidents({ project, projectId, live }) {
   useEffect(() => {
     let cancelled = false
     function load() {
-      Promise.all([getIncidents(projectId, status), getIncidentSummary(projectId)])
+      Promise.all([
+        getIncidents(projectId, status, { min_severity: minSeverity, service }),
+        getIncidentSummary(projectId),
+      ])
         .then(([list, counts]) => {
           if (!cancelled) {
             setIncidents(list)
@@ -36,7 +41,7 @@ function Incidents({ project, projectId, live }) {
       cancelled = true
       clearInterval(timer)
     }
-  }, [projectId, status, live, reloadCount])
+  }, [projectId, status, minSeverity, service, live, reloadCount])
 
   async function handleDetect() {
     const result = await detectIncidents(projectId)
@@ -86,8 +91,23 @@ function Incidents({ project, projectId, live }) {
               </button>
             ))}
           </div>
-          {message && <p className="notice good">{message}</p>}
+          <div className="header-buttons">
+            <select className="input input-small" value={minSeverity} onChange={(event) => setMinSeverity(event.target.value)} aria-label="Minimum severity">
+              <option value="">Any severity</option>
+              {LEVELS.map((level) => (
+                <option key={level} value={level}>{level} or worse</option>
+              ))}
+            </select>
+            <input
+              className="input input-small"
+              placeholder="Service"
+              value={service}
+              onChange={(event) => setService(event.target.value)}
+              aria-label="Service"
+            />
+          </div>
         </div>
+        {message && <p className="notice good">{message}</p>}
 
         {incidents === null ? (
           <p className="empty">Loading incidents...</p>

@@ -10,6 +10,7 @@ If none fits, it uses the general rules in this file.
 Example of a line the parser understands:
   2026-10-08 10:15:03 ERROR [checkout-api] OperationalError: refused request_id=req-9f31
   |-- timestamp ----| |sev| |- service -| |- error type -|          |- request id -|
+A "trace_id=<32 hex>" anywhere in the entry links it to an OpenTelemetry trace.
 """
 
 import re
@@ -41,6 +42,9 @@ REQUEST_ID = re.compile(r"\b(?:request[_-]?id|req[_-]?id)[=:]\s*\"?([\w\-]+)", r
 
 # OpenStack style: req-38101a0b-2096-447d-96ea-a692162415ae
 REQUEST_UUID = re.compile(r"\b(req-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\b")
+
+# trace_id=4bf92f3577b34da6a3ce929d0e0e4736 (an OpenTelemetry trace ID)
+TRACE_ID = re.compile(r"\btrace[_-]?id[=:]\s*\"?([0-9a-f]{32})\b", re.IGNORECASE)
 
 # ZeroDivisionError   NullPointerException   sqlalchemy.exc.OperationalError
 ERROR_TYPE = re.compile(r"\b([A-Z]\w*(?:Error|Exception))\b")
@@ -152,6 +156,11 @@ def find_request_id(text):
     return match.group(1)[:100] if match else None
 
 
+def find_trace_id(text):
+    match = TRACE_ID.search(text)
+    return match.group(1).lower() if match else None
+
+
 def guess_severity(error_type, message):
     """Used only when a log has no level word. Returns None if there is no sign of a problem."""
     if error_type:
@@ -174,6 +183,7 @@ def parse_log(raw):
         "error_type": None,
         "message": None,
         "request_id": None,
+        "trace_id": None,
         "stack_trace": textwrap.dedent(other_lines) if other_lines else None,
     }
 
@@ -221,6 +231,7 @@ def parse_log(raw):
     # 4. Error type and request ID can be anywhere in the entry
     fields["error_type"] = find_error_type(fields["message"]) or find_error_type(raw)
     fields["request_id"] = find_request_id(raw)
+    fields["trace_id"] = find_trace_id(raw)
 
     # 5. No level written: guess it from the error type or from warning words
     if fields["severity"] is None:

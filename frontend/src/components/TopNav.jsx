@@ -4,8 +4,10 @@ const PAGES = [
   { path: '/', label: 'Overview' },
   { path: '/incidents', label: 'Incidents' },
   { path: '/services', label: 'Services' },
+  { path: '/telemetry', label: 'Telemetry' },
   { path: '/logs', label: 'Logs' },
   { path: '/datasets', label: 'Datasets' },
+  { path: '/tools', label: 'Tools' },
 ]
 
 // The floating bar at the top: logo, page links, project picker and status.

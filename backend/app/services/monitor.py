@@ -27,8 +27,10 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import select
+
 from app.database import SessionLocal
-from app.models import Log
+from app.models import Log, Project
 from app.services.incident_detector import detect_incidents
 from app.services.log_parser import parse_log, split_into_entries
 from app.services.projects import find_or_create_project
@@ -60,6 +62,11 @@ CRASH_LOOP_WINDOW = 60  # ... within this many seconds is a crash loop
 GIVE_UP_AFTER = 6  # after this many crashes in the window, stop restarting
 HEALTH_EVERY = 3  # seconds between health checks
 TICK = 0.5  # how often the watcher looks at the services
+FAULTS = ("", "crash", "slow", "bad-config")  # what shop-api can be started with
+
+# Where the services send OpenTelemetry data: this backend's own address.
+# The monitoring routes set it from the request, so it is right on any port.
+api_url = os.getenv("BUGSENSE_URL", "http://127.0.0.1:8000")
 
 # Tests replace this with a session for their own test database
 session_factory = SessionLocal
@@ -104,6 +111,15 @@ def project_id():
                 db, PROJECT_NAME, "Three demo services started and watched by BugSense."
             ).id
             db.commit()
+    return _project_id
+
+
+def project_id_if_known():
+    """The demo shop's project id if it exists already (never creates it)."""
+    if _project_id is None:
+        with session_factory() as db:
+            project = db.scalars(select(Project).where(Project.name == PROJECT_NAME)).first()
+            return project.id if project else None
     return _project_id
 
 
@@ -179,7 +195,16 @@ def _start(name):
         state["status"] = "crashed"
         record_event(name, "ERROR", f"Cannot start: port {config['port']} is already used by another program", "PortInUse")
         return
-    environment = {**os.environ, "SHOP_FAULT": state["fault"], "PYTHONUNBUFFERED": "1"}
+    environment = {
+        **os.environ,
+        "SHOP_FAULT": state["fault"],
+        "PYTHONUNBUFFERED": "1",
+        # OpenTelemetry: send traces and metrics to this BugSense backend,
+        # into the demo shop's project (service.namespace = project name)
+        "OTEL_EXPORTER_OTLP_ENDPOINT": api_url,
+        "BUGSENSE_PROJECT": PROJECT_NAME,
+        "NO_PROXY": "127.0.0.1,localhost",
+    }
     process = subprocess.Popen(
         [sys.executable, config["script"]],
         cwd=DEMO_FOLDER,
@@ -193,8 +218,9 @@ def _start(name):
     threading.Thread(
         target=read_output, args=(process.stdout, lambda entry: store_entry(name, entry)), daemon=True
     ).start()
-    fault = f" with fault '{state['fault']}'" if state["fault"] else ""
-    record_event(name, "INFO", f"Started (pid {process.pid}){fault}")
+    # The demo fault is not written into the logs: a real supervisor would not
+    # know it, and the diagnosis must find the cause from the evidence alone
+    record_event(name, "INFO", f"Started (pid {process.pid})")
 
 
 def _stop(name, reason):
@@ -308,6 +334,11 @@ def _ensure_watcher():
 # ---------- What the API calls ----------
 
 
+def set_api_url(url):
+    global api_url
+    api_url = url.rstrip("/")
+
+
 def start(name):
     with _lock:
         _ensure_watcher()
@@ -367,7 +398,8 @@ def run_scenario(key):
     start_all()
     if key == "database-down":
         with _lock:
-            _stop("shop-db", "Stopped (demo scenario: database goes down)")
+            # Neutral wording: the diagnosis must not be told what the scenario is
+            _stop("shop-db", "Stopped")
     elif key == "crash-loop":
         restart("shop-api", fault="crash")
     elif key == "slow":
@@ -402,7 +434,7 @@ def status():
         events = list(_events)[-40:][::-1]
     return {
         "monitoring": _active.is_set(),
-        "project_id": _project_id,
+        "project_id": project_id_if_known(),
         "services": services,
         "events": events,
         "scenarios": [{"key": key, "description": text} for key, text in SCENARIOS.items()],

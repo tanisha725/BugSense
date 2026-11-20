@@ -2,9 +2,11 @@
 
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import ValidationError
 from sqlalchemy import delete, func, select
@@ -16,6 +18,7 @@ from app.schemas import LogCreate, LogOut, LogsCreated, LogText
 from app.services.log_parser import (
     find_error_type,
     find_request_id,
+    find_trace_id,
     normalize_severity,
     parse_log,
     split_into_entries,
@@ -28,6 +31,7 @@ router = APIRouter(prefix="/logs", tags=["logs"])
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB
 MAX_ENTRIES = 5000
+LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 TEXT_EXTENSIONS = {".log", ".txt"}
 JSON_EXTENSIONS = {".json", ".jsonl"}
 
@@ -51,6 +55,7 @@ def structured_log(data, raw, project):
     # Fill in what the sender left out, if the message contains it
     fields["error_type"] = fields["error_type"] or find_error_type(data.message)
     fields["request_id"] = fields["request_id"] or find_request_id(data.message)
+    fields["trace_id"] = (fields["trace_id"] or find_trace_id(data.message) or "").lower() or None
     return Log(project_id=project.id, raw=raw, **fields)
 
 
@@ -161,7 +166,7 @@ def in_project(query, project_id):
 
 
 @router.get("/stats")
-def log_stats(project_id: int | None = None, db: Session = Depends(get_db)):
+def log_stats(project_id: Annotated[int | None, Query(ge=1)] = None, db: Session = Depends(get_db)):
     """Counts logs by severity and finds the most common error types and services."""
     rows = db.execute(
         in_project(select(Log.severity, func.count()), project_id).group_by(Log.severity)
@@ -210,9 +215,9 @@ def as_local_time(moment):
 
 @router.get("/timeline")
 def log_timeline(
-    project_id: int | None = None,
-    slots: int = 30,
-    minutes: int | None = None,
+    project_id: Annotated[int | None, Query(ge=1)] = None,
+    slots: Annotated[int, Query(ge=1, le=120)] = 30,
+    minutes: Annotated[int | None, Query(ge=1, le=1440)] = None,
     db: Session = Depends(get_db),
 ):
     """Counts logs in equal time slots, for the activity chart.
@@ -220,7 +225,6 @@ def log_timeline(
     Without `minutes` the slots cover the whole time range of the logs.
     With `minutes` they cover only the last few minutes (used for live replay).
     """
-    slots = max(1, min(slots, 120))
     when = func.coalesce(Log.timestamp, Log.created_at)
     rows = db.execute(in_project(select(when, Log.severity), project_id)).all()
     times = [(as_local_time(moment), severity) for moment, severity in rows]
@@ -250,46 +254,93 @@ def log_timeline(
     return result
 
 
-def filtered_logs(project_id, search, severity, service):
-    """The query behind the Logs page filters, shared by the list and the CSV export."""
-    query = in_project(select(Log), project_id)
-    if search:
-        query = query.where(Log.raw.icontains(search, autoescape=True))
-    if severity:
-        query = query.where(Log.severity == severity.upper())
-    if service:
-        query = query.where(Log.service.icontains(service, autoescape=True))
+def aware(moment):
+    """Times sent without a time zone are read as the computer's local time."""
+    return moment.astimezone() if moment and moment.tzinfo is None else moment
+
+
+@dataclass
+class LogFilters:
+    """Every filter of the Logs page. FastAPI reads each field from the query
+    string and checks it (types, allowed values, limits) before the route runs."""
+
+    search: str | None = None
+    severity: str | None = Query(None, description="DEBUG, INFO, WARNING, ERROR or CRITICAL")
+    min_severity: str | None = Query(None, description="This level or more serious")
+    service: str | None = None
+    error_type: str | None = None
+    request_id: str | None = None
+    trace_id: Annotated[str | None, Query(pattern=r"^[0-9a-fA-F]{32}$")] = None
+    incident_id: Annotated[int | None, Query(ge=1)] = None
+    since: datetime | None = None
+    until: datetime | None = None
+    project_id: Annotated[int | None, Query(ge=1)] = None
+
+    def __post_init__(self):
+        for name in ("severity", "min_severity"):
+            value = getattr(self, name)
+            if value is not None:
+                if value.upper() not in LEVELS:
+                    raise HTTPException(status_code=422, detail=f"{name} must be one of {', '.join(LEVELS)}")
+                setattr(self, name, value.upper())
+        if self.since and self.until and aware(self.since) > aware(self.until):
+            raise HTTPException(status_code=422, detail="since must be before until")
+
+
+def filtered_logs(filters: LogFilters):
+    """The query behind the Logs page filters, shared by the list, the count and the CSV export."""
+    moment = func.coalesce(Log.timestamp, Log.created_at)
+    query = in_project(select(Log), filters.project_id)
+    if filters.search:
+        query = query.where(Log.raw.icontains(filters.search, autoescape=True))
+    if filters.severity:
+        query = query.where(Log.severity == filters.severity)
+    if filters.min_severity:
+        query = query.where(Log.severity.in_(LEVELS[LEVELS.index(filters.min_severity):]))
+    if filters.service:
+        query = query.where(Log.service.icontains(filters.service, autoescape=True))
+    if filters.error_type:
+        query = query.where(func.lower(Log.error_type) == filters.error_type.lower())
+    if filters.request_id:
+        query = query.where(Log.request_id == filters.request_id)
+    if filters.trace_id:
+        query = query.where(Log.trace_id == filters.trace_id.lower())
+    if filters.incident_id:
+        query = query.where(Log.incident_id == filters.incident_id)
+    if filters.since:
+        query = query.where(moment >= aware(filters.since))
+    if filters.until:
+        query = query.where(moment <= aware(filters.until))
     return query
 
 
 @router.get("", response_model=list[LogOut])
 def list_logs(
-    search: str | None = None,
-    severity: str | None = None,
-    service: str | None = None,
-    project_id: int | None = None,
-    limit: int = 100,
+    filters: Annotated[LogFilters, Depends()],
+    order: Literal["newest", "oldest"] = "newest",
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
     db: Session = Depends(get_db),
 ):
-    """Returns the newest logs first, with optional filters."""
-    query = filtered_logs(project_id, search, severity, service)
-    query = query.order_by(Log.id.desc()).limit(max(1, min(limit, 500)))
+    """Returns logs (newest first by default), with optional filters and paging."""
+    ordering = Log.id.desc() if order == "newest" else Log.id
+    query = filtered_logs(filters).order_by(ordering).offset(offset).limit(limit)
     return db.scalars(query).all()
 
 
+@router.get("/count")
+def count_logs(filters: Annotated[LogFilters, Depends()], db: Session = Depends(get_db)):
+    """How many logs match the filters (for paging on the Logs page)."""
+    return {"total": db.scalar(select(func.count()).select_from(filtered_logs(filters).subquery()))}
+
+
 @router.get("/export")
-def export_logs(
-    search: str | None = None,
-    severity: str | None = None,
-    service: str | None = None,
-    project_id: int | None = None,
-    db: Session = Depends(get_db),
-):
+def export_logs(filters: Annotated[LogFilters, Depends()], db: Session = Depends(get_db)):
     """Downloads the stored logs (with the same filters as the Logs page) as a CSV file.
 
     This also works for a live stream: it exports everything received so far.
     """
-    query = filtered_logs(project_id, search, severity, service).order_by(Log.id).limit(50_000)
+    query = filtered_logs(filters).order_by(Log.id).limit(50_000)
     rows = [
         {
             "line": log.id,
@@ -298,6 +349,7 @@ def export_logs(
             "service": log.service,
             "error_type": log.error_type,
             "request_id": log.request_id,
+            "trace_id": log.trace_id,
             "message": log.message or log.raw,
         }
         for log in db.scalars(query)
@@ -324,7 +376,7 @@ def delete_log(log_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("")
-def delete_all_logs(project_id: int | None = None, db: Session = Depends(get_db)):
+def delete_all_logs(project_id: Annotated[int | None, Query(ge=1)] = None, db: Session = Depends(get_db)):
     """Deletes every log (of one project, if given). Useful before a new demo."""
     query = delete(Log)
     incidents = delete(Incident)

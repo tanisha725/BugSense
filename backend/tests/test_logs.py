@@ -109,3 +109,81 @@ def test_stats_top_errors(client):
         {"error_type": "TimeoutError", "count": 2},
         {"error_type": "KeyError", "count": 1},
     ]
+
+
+FILTER_LOGS = """2026-11-17 10:00:00 INFO [api] started request_id=req-0
+2026-11-17 10:00:01 ERROR [api] TimeoutError: db slow request_id=req-1 trace_id=4bf92f3577b34da6a3ce929d0e0e4736
+2026-11-17 10:00:02 WARNING [web] retrying request_id=req-1
+2026-11-17 10:00:03 CRITICAL [web] ConnectionError: api down request_id=req-2
+2026-11-17 10:00:04 DEBUG [web] cache miss
+"""
+
+
+def test_every_log_filter_and_paging_parameter(client):
+    client.post("/logs/text", json={"text": FILTER_LOGS})
+
+    def messages(**params):
+        return [log["message"][:12] for log in client.get("/logs", params=params).json()]
+
+    def count(**params):
+        return client.get("/logs/count", params=params).json()["total"]
+
+    assert count() == 5
+    assert count(severity="error") == 1  # lower case is accepted
+    assert count(min_severity="WARNING") == 3
+    assert count(service="we") == 3
+    assert count(error_type="timeouterror") == 1
+    assert count(request_id="req-1") == 2
+    assert count(trace_id="4BF92F3577B34DA6A3CE929D0E0E4736") == 1
+    assert count(since="2026-11-17T10:00:03") == 2
+    assert count(until="2026-11-17T10:00:01") == 2
+    assert count(search="retry") == 1
+    incident = client.get("/incidents").json()[0]["id"]
+    assert count(incident_id=incident) == 3  # the WARNING, ERROR and CRITICAL logs
+
+    assert messages(limit=2) == ["cache miss", "ConnectionEr"]  # newest first
+    assert messages(limit=2, offset=2) == ["retrying req", "TimeoutError"]
+    assert messages(order="oldest", limit=1) == ["started requ"]
+
+    export = client.get("/logs/export", params={"request_id": "req-1"}).text
+    assert export.count("\n") == 3 and "trace_id" in export.splitlines()[0]
+
+
+def test_log_parameters_are_validated(client):
+    for params in (
+        {"severity": "LOUD"},
+        {"min_severity": "x"},
+        {"limit": 0},
+        {"limit": 501},
+        {"offset": -1},
+        {"trace_id": "nope"},
+        {"order": "random"},
+        {"since": "2026-11-17T11:00:00", "until": "2026-11-17T10:00:00"},
+        {"project_id": 0},
+    ):
+        assert client.get("/logs", params=params).status_code == 422, params
+    assert client.get("/logs/timeline", params={"slots": 0}).status_code == 422
+    assert client.get("/logs/timeline", params={"minutes": 0}).status_code == 422
+
+
+def test_incident_list_parameters(client):
+    client.post("/logs/text", json={"text": FILTER_LOGS})
+
+    def ids(**params):
+        return client.get("/incidents", params=params).json()
+
+    assert len(ids()) == 1
+    assert len(ids(status="resolved")) == 0
+    assert len(ids(status="all")) == 1
+    assert len(ids(min_severity="CRITICAL")) == 1
+    assert len(ids(service="web")) == 1
+    assert len(ids(service="nothing")) == 0
+    assert len(ids(offset=1)) == 0
+    assert client.get("/incidents", params={"status": "maybe"}).status_code == 422
+    assert client.get("/incidents", params={"min_severity": "HUGE"}).status_code == 422
+    assert client.get("/incidents", params={"limit": 0}).status_code == 422
+
+    incident = ids()[0]["id"]
+    detail = client.get(f"/incidents/{incident}", params={"log_limit": 1, "errors_only": True}).json()
+    assert len(detail["logs"]) == 1 and detail["logs_matching"] == 2
+    assert client.post("/incidents/detect", params={"project_id": 999}).status_code == 404

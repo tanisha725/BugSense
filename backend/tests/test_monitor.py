@@ -77,4 +77,10 @@ def test_crash_loop_is_detected_and_becomes_an_incident(crashing_service, sessio
 def test_unknown_service_and_scenario_are_rejected(client):
     assert client.post("/monitor/services/rm-rf/start").status_code == 404
     assert client.post("/monitor/scenarios/delete-everything").status_code == 404
-    assert client.post("/monitor/services/shop-api/explode").status_code == 400
+    assert client.post("/monitor/services/shop-api/explode").status_code == 422
+
+
+def test_fault_parameter_is_checked(client):
+    assert client.post("/monitor/services/shop-db/start", params={"fault": "crash"}).status_code == 422
+    assert client.post("/monitor/services/shop-db/restart", params={"fault": "crash"}).status_code == 422
+    assert client.post("/monitor/services/shop-api/restart", params={"fault": "explode"}).status_code == 422

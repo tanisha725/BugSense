@@ -59,12 +59,18 @@ function LogTable({ logs, emptyText = 'No logs yet.', onDelete }) {
               {openId === log.id && (
                 <tr className="raw-row">
                   <td colSpan={5}>
-                    {(log.request_id || log.stack_trace) && (
+                    {(log.request_id || log.trace_id || log.stack_trace) && (
                       <dl className="details">
                         {log.request_id && (
                           <div>
                             <dt>Request ID</dt>
                             <dd>{log.request_id}</dd>
+                          </div>
+                        )}
+                        {log.trace_id && (
+                          <div>
+                            <dt>Trace ID</dt>
+                            <dd className="mono">{log.trace_id}</dd>
                           </div>
                         )}
                         {log.stack_trace && (

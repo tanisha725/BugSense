@@ -1,27 +1,48 @@
 import { useEffect, useState } from 'react'
 import LogForm from '../components/LogForm.jsx'
 import LogTable from '../components/LogTable.jsx'
-import { deleteAllLogs, deleteLog, exportLogsUrl, getLogs } from '../services/api.js'
+import { countLogs, deleteAllLogs, deleteLog, exportLogsUrl, getLogs } from '../services/api.js'
 
-const NO_FILTERS = { search: '', severity: '', service: '' }
+const NO_FILTERS = {
+  search: '',
+  severity: '',
+  min_severity: '',
+  service: '',
+  error_type: '',
+  request_id: '',
+  trace_id: '',
+  since: '',
+  until: '',
+}
+const LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+const PAGE_SIZES = [50, 100, 200, 500]
 
 function Logs({ project, projectId, live, onChange }) {
   const [filters, setFilters] = useState(NO_FILTERS)
+  const [order, setOrder] = useState('newest')
+  const [pageSize, setPageSize] = useState(100)
+  const [page, setPage] = useState(0)
+  const [showMore, setShowMore] = useState(false)
   const [logs, setLogs] = useState([])
+  const [total, setTotal] = useState(0)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
   // Changing this number makes the effect below run again (used after adding logs)
   const [reloadCount, setReloadCount] = useState(0)
 
-  // Runs when the page loads, when a filter changes, and every 3 seconds while live.
+  const query = { ...filters, project_id: projectId }
+
+  // Runs when the page loads, when a filter or the page changes, and every 3 seconds while live.
   useEffect(() => {
     let cancelled = false
+    const current = { ...filters, project_id: projectId }
     function load() {
-      getLogs({ ...filters, project_id: projectId })
-        .then((data) => {
+      Promise.all([getLogs({ ...current, order, limit: pageSize, offset: page * pageSize }), countLogs(current)])
+        .then(([data, counted]) => {
           // Ignore the reply if a newer request has started since
           if (!cancelled) {
             setLogs(data)
+            setTotal(counted.total)
             setError(null)
           }
         })
@@ -35,7 +56,7 @@ function Logs({ project, projectId, live, onChange }) {
       cancelled = true
       clearInterval(timer)
     }
-  }, [filters, reloadCount, projectId, live])
+  }, [filters, order, pageSize, page, reloadCount, projectId, live])
 
   function reload() {
     setReloadCount((count) => count + 1)
@@ -59,9 +80,13 @@ function Logs({ project, projectId, live, onChange }) {
 
   function updateFilter(name, value) {
     setFilters({ ...filters, [name]: value })
+    setPage(0)
   }
 
-  const hasFilters = filters.search || filters.severity || filters.service
+  const hasFilters = Object.values(filters).some(Boolean)
+  const firstShown = total === 0 ? 0 : page * pageSize + 1
+  const lastShown = page * pageSize + logs.length
+  const pages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
     <>
@@ -89,17 +114,11 @@ function Logs({ project, projectId, live, onChange }) {
             value={filters.search}
             onChange={(event) => updateFilter('search', event.target.value)}
           />
-          <select
-            className="input"
-            value={filters.severity}
-            onChange={(event) => updateFilter('severity', event.target.value)}
-          >
+          <select className="input" value={filters.severity} onChange={(event) => updateFilter('severity', event.target.value)}>
             <option value="">All severities</option>
-            <option>DEBUG</option>
-            <option>INFO</option>
-            <option>WARNING</option>
-            <option>ERROR</option>
-            <option>CRITICAL</option>
+            {LEVELS.map((level) => (
+              <option key={level}>{level}</option>
+            ))}
           </select>
           <input
             className="input"
@@ -107,31 +126,90 @@ function Logs({ project, projectId, live, onChange }) {
             value={filters.service}
             onChange={(event) => updateFilter('service', event.target.value)}
           />
-          <button
-            type="button"
-            className="button button-quiet"
-            disabled={!hasFilters}
-            onClick={() => setFilters(NO_FILTERS)}
-          >
-            Clear
+          <button type="button" className="button button-quiet" onClick={() => setShowMore(!showMore)}>
+            {showMore ? 'Fewer filters' : 'More filters'}
           </button>
         </div>
 
+        {showMore && (
+          <div className="filters-more">
+            <label className="field">
+              <span>At least</span>
+              <select className="input" value={filters.min_severity} onChange={(event) => updateFilter('min_severity', event.target.value)}>
+                <option value="">Any level</option>
+                {LEVELS.map((level) => (
+                  <option key={level}>{level}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Error type</span>
+              <input className="input" placeholder="TimeoutError" value={filters.error_type} onChange={(event) => updateFilter('error_type', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Request ID</span>
+              <input className="input" placeholder="req-9f31" value={filters.request_id} onChange={(event) => updateFilter('request_id', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>Trace ID</span>
+              <input className="input" placeholder="32 hex characters" value={filters.trace_id} onChange={(event) => updateFilter('trace_id', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>From</span>
+              <input className="input" type="datetime-local" step="1" value={filters.since} onChange={(event) => updateFilter('since', event.target.value)} />
+            </label>
+            <label className="field">
+              <span>To</span>
+              <input className="input" type="datetime-local" step="1" value={filters.until} onChange={(event) => updateFilter('until', event.target.value)} />
+            </label>
+            <button
+              type="button"
+              className="button button-quiet"
+              disabled={!hasFilters}
+              onClick={() => {
+                setFilters(NO_FILTERS)
+                setPage(0)
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
         <div className="table-toolbar">
           <span className="muted">
-            {logs.length} shown{logs.length === 100 ? ' (newest 100)' : ''}
+            {total === 0 ? 'No logs' : `${firstShown.toLocaleString()}–${lastShown.toLocaleString()} of ${total.toLocaleString()}`}
           </span>
+          <select className="input input-small" value={order} onChange={(event) => setOrder(event.target.value)} aria-label="Order">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+          <select
+            className="input input-small"
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value))
+              setPage(0)
+            }}
+            aria-label="Logs per page"
+          >
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>{size} per page</option>
+            ))}
+          </select>
+          <button type="button" className="button button-quiet button-small" disabled={page === 0} onClick={() => setPage(page - 1)}>
+            ← Previous
+          </button>
+          <span className="muted">Page {page + 1} of {pages}</span>
+          <button type="button" className="button button-quiet button-small" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>
+            Next →
+          </button>
           <span className="spacer" />
-          {/* Downloads every matching log, not only the 100 shown */}
-          <a className="button button-quiet button-small" href={exportLogsUrl({ ...filters, project_id: projectId })} download>
+          {/* Downloads every matching log, not only this page */}
+          <a className="button button-quiet button-small" href={exportLogsUrl(query)} download>
             Export CSV
           </a>
-          <button
-            type="button"
-            className="button button-danger"
-            disabled={logs.length === 0 && !hasFilters}
-            onClick={handleDeleteAll}
-          >
+          <button type="button" className="button button-danger" disabled={total === 0 && !hasFilters} onClick={handleDeleteAll}>
             Delete all
           </button>
         </div>

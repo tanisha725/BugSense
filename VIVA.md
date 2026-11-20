@@ -4,7 +4,8 @@ Simple explanations of everything built so far. Updated after every phase.
 
 **Built so far:** Phase 1 (Foundation), Phase 2 (Database), Phase 3 (Log ingestion),
 Phase 4 (Log processing), real-world data, live mode, the new interface,
-Phase 5 (Incident detection) and Phase 6 (Service monitoring)
+Phase 5 (Incident detection), Phase 6 (Service monitoring), OpenTelemetry
+monitoring, Phase 7 (AI diagnosis with tools), and the Huawei pitch
 
 ---
 
@@ -29,7 +30,9 @@ at once, or streamed in live while the dashboard updates every 3 seconds. You
 can also send your own logs in three ways. Each log is read by a parser that
 picks out its time, severity, service, error type, request ID and stack
 trace. Related failures are then grouped into incidents, each with a
-severity, a title and its evidence. Finding the root cause is Phase 8.
+severity, a title and its evidence. The demo shop is monitored with
+OpenTelemetry (traces and metrics). For any incident, BugSense finds the
+probable cause with 9 investigation tools, used by an AI agent or by rules.
 
 ---
 
@@ -37,6 +40,8 @@ severity, a title and its evidence. Finding the root cause is Phase 8.
 
 ```
 Browser → React (port 5173) → FastAPI (port 8000) → PostgreSQL (port 5432)
+                                   ↑         ↓
+        demo shop (OpenTelemetry) ─┘         └→ AI provider (optional, free)
 ```
 
 | Part | What it is | Its job |
@@ -67,7 +72,8 @@ BugSense/
 │   │                 cards, charts (ActivityChart, RingGauge, BarList,
 │   │                 SeverityBreakdown), LogForm, LogTable
 │   ├── assets/       images (the brain picture in the System pulse card)
-│   ├── pages/        full screens (Dashboard, Incidents, Services, Logs, Datasets)
+│   ├── pages/        full screens (Dashboard, Incidents, Services, Telemetry,
+│   │                 Logs, Datasets, Tools)
 │   ├── services/     code that calls the backend (api.js)
 │   ├── App.jsx       the layout and the page routes
 │   ├── index.css     all the styling
@@ -78,13 +84,16 @@ BugSense/
 │   ├── app/models.py     the database tables
 │   ├── app/schemas.py    the shape of data going in and out of the API
 │   ├── app/routes/       the API endpoints, one file per feature
-│   │                     (logs, incidents, monitoring, projects, datasets)
+│   │                     (logs, incidents, monitoring, projects, datasets,
+│   │                     telemetry, tools)
 │   ├── app/services/     the logic the routes use: log_parser.py,
 │   │                     log_formats.py, incident_detector.py, monitor.py,
-│   │                     datasets.py, replay.py, projects.py
+│   │                     datasets.py, replay.py, projects.py, incidents.py,
+│   │                     otlp.py, telemetry.py, tools.py, diagnosis.py
 │   ├── datasets/         real log files from Loghub (with their source)
 │   └── tests/            automatic tests
-├── demo-services/    three small programs that act as a shop to monitor
+├── demo-services/    three small programs that act as a shop to monitor,
+│                     plus otel.py (their OpenTelemetry setup)
 ├── samples/          example log files for the demo
 ├── .env.example      example settings
 └── README.md
@@ -934,86 +943,281 @@ Yes. The grid changes from 12 columns to 6, then to 1 on small screens.
 
 ---
 
-## Research comparison (the main evaluation focus)
+## OpenTelemetry monitoring (professor's feedback: "use telemetry")
 
-BugSense is compared with **two IEEE papers from companies**. Full details
-are in `RESEARCH.md`.
+**What I built:** BugSense now monitors the demo shop with **OpenTelemetry**,
+the industry standard for telemetry. Each service sends:
 
-| | Paper | Company | IEEE venue | Matches |
-|---|---|---|---|---|
-| 1 | GRLIA: Graph-based Incident Aggregation | Huawei Cloud | ASE 2021 | Grouping errors into incidents (Phase 5) |
-| 2 | Root cause and mitigation with LLMs | Microsoft | ICSE 2023 | AI diagnosis (Phase 7) |
+| Signal | What it is | Example |
+|---|---|---|
+| **Traces** | One request, step by step, across services | shop-web → shop-api → shop-db, 20 ms, which step failed |
+| **Metrics** | Numbers over time | request durations, CPU seconds, memory |
+| **Logs** | Log lines, linked to their trace by a trace ID | "OperationalError ... trace_id=4bf9..." |
 
-**What to say in one minute:**
+**How it works, in order:**
 
-> "I compared BugSense with two IEEE papers from companies. The first is
-> GRLIA from Huawei Cloud, at ASE 2021. One failure in a cloud spreads to
-> many services, so GRLIA groups the resulting incidents by learning how
-> failures cascade, using a graph model trained on past failures and
-> metrics. BugSense groups incidents from raw logs alone with simple rules,
-> needs no training, and shows the reason for every decision. The second is
-> Microsoft's study at ICSE 2023, which gives large language models the
-> title and summary of more than 40,000 incidents and asks for the root
-> cause and the fix. BugSense's AI diagnosis will instead receive the
-> structured evidence BugSense extracted itself, needs no fine-tuning, and
-> must say 'probable' and list its limits. So what is new is one open tool,
-> from raw logs to explained incidents, that runs on a laptop."
+1. Each demo service calls `otel.setup("shop-api")` (in `demo-services/otel.py`).
+2. Every checkout becomes a **span**. The trace ID travels to the next service
+   in the standard `traceparent` HTTP header, so one checkout is **one trace**.
+3. The OpenTelemetry SDK sends the data every few seconds with **OTLP**
+   (OpenTelemetry Protocol) to BugSense at `/v1/traces` and `/v1/metrics`.
+4. BugSense (`services/otlp.py`) reads the message (binary protobuf or JSON)
+   and stores spans and metric points in two new tables.
+5. `services/telemetry.py` calculates, per service: requests per minute,
+   error rate, latency p50/p95/p99, CPU % and memory.
+6. If a service's error rate goes above 20% or its p95 latency above 1 second
+   (over the last minute), BugSense stores an **alert log**. Incident
+   detection then puts the alert into the same incident as the errors.
 
-### Paper 1: GRLIA (Huawei Cloud)
-
-- **What they did:** grouped incidents caused by the same failure, using
-  graph representation learning on past failure cascades and monitoring
-  metrics (KPIs). Real Huawei Cloud data; deployed in industry.
-- **Their limits:** needs failure history and metrics, gives no reason for a
-  grouping, and is an internal company system.
-- **What BugSense does:** groups by time (10-minute gap) from raw logs alone,
-  with severity rules and the reason shown.
-- **What is new:** explainable, no training needed, and process crashes join
-  the same incident through the service monitor.
-
-### Paper 2: LLMs for root cause (Microsoft)
-
-- **What they did:** GPT-3.x models read the incident title and summary and
-  suggested the root cause and mitigation steps, for 40,000+ Microsoft
-  incidents, zero-shot and fine-tuned, with a human evaluation.
-- **Their limits:** fine-tuning needs tens of thousands of past incidents,
-  and the model sees only a short text, not the actual logs.
-- **What BugSense will do (Phase 7):** send the AI the structured evidence of
-  one incident (errors, services, stack traces, crash events), with no
-  fine-tuning, and require "probable", the evidence used, and its limits.
-- **What is new:** grounded in evidence, works without incident history, and
-  honest about uncertainty.
+> "Before, BugSense only knew if a process was running and if /health
+> answered. Now it sees every request: how long it took, where it went, and
+> where it failed. That is what professional monitoring tools do, and I used
+> the same standard, OpenTelemetry, that Huawei Cloud's AOM and APM accept."
 
 ### Likely questions
 
-**Why these two papers?**
-Each matches a main part of BugSense: Paper 1 is about grouping incidents
-(Phase 5) and Paper 2 is about AI diagnosis (Phase 7). Both are IEEE papers
-from large companies, so they show how industry solves the same problems.
+**What is a span? What is a trace?**
+A span is one step (for example "shop-api handles GET /checkout"). A trace is
+all the spans of one request. Each span knows its parent, so a trace is a tree.
 
-**Is BugSense better than Huawei's or Microsoft's systems?**
-No, and it does not claim to be. Those systems work at company scale on
-private data. BugSense fills a different gap: an open, explainable tool that
-a small team can run without any history or training.
+**How does the trace go from one service to the next?**
+The calling service adds a `traceparent` header to its HTTP request. The next
+service reads it and makes its span a child of the caller's span.
+
+**What are p50, p95 and p99?**
+Percentiles. p95 = 300 ms means 95% of requests took 300 ms or less. Averages
+hide slow requests; p95 shows what the slowest users feel.
+
+**What is the RED method?**
+Rate (requests per minute), Errors (how many failed), Duration (latency).
+BugSense computes all three from the spans.
+
+**Why DELTA temporality for metrics?**
+Each export says how much was added since the last one, so adding up the
+points in a time window gives the total for that window.
+
+**Did you need an OpenTelemetry Collector?**
+No. BugSense itself receives OTLP, like a collector would. In a company, a
+collector could send one copy to Huawei AOM/APM and one to BugSense.
+
+**What bug did you find while building it?**
+The trace broke between services. Python's urllib sends the header as
+`Traceparent` with a capital T, and OpenTelemetry looked for `traceparent`.
+Reading the headers in lower case fixed it.
+
+---
+
+## Phase 7 — AI diagnosis with tools
+
+**What I built:** a **"Find probable cause"** button on every incident. An
+investigator calls **tools** to collect evidence, then gives the probable
+cause, the root service, a confidence, the evidence and suggested fixes.
+
+**The 9 tools (all read-only):**
+
+| Tool | Question it answers |
+|---|---|
+| `list_incidents` | Which incidents are there? |
+| `get_incident` | What is in this incident? |
+| `get_error_timeline` | Which service failed **first**? |
+| `search_logs` | Find logs by text, severity, service, error type, request ID, trace ID, time |
+| `get_service_status` | Is the process running, crashed, in a crash loop? Health? Restarts? |
+| `get_service_metrics` | Telemetry: requests, error rate, latency, CPU, memory |
+| `get_metric_series` | One metric over time: when did it change? |
+| `search_traces` | Find the failed or slow requests |
+| `get_trace` | Follow one request hop by hop |
+
+**"All tool parameters completely implemented" (professor's feedback):**
+every parameter is a field of a **Pydantic model**. That one model:
+
+1. becomes the **JSON Schema** the AI is shown (type, minimum, maximum,
+   allowed values, description),
+2. **validates** every call: a wrong type, a number out of range or an
+   unknown parameter is refused with a clear message (never ignored),
+3. is used as a **filter in the database query**, so no parameter is decorative.
+
+The tests call every parameter of every tool and check that it really
+changes the result (`backend/tests/test_tools.py`). The **Tools** page builds
+a form from the same schema, so the examiner can try any tool.
+
+**Two engines, same tools:**
+
+| | AI engine (`llm`) | Rules engine (`rules`) |
+|---|---|---|
+| Who picks the tools | The AI model, by itself | A fixed order in Python |
+| Model | `openai/gpt-oss-20b` on Groq (free tier), changeable | none |
+| Cost | Small: tokens are counted and shown | Zero |
+| When | A key is set (`LLM_API_KEY`) | No key, or the AI fails |
+
+**How the AI agent works (the loop):**
+
+1. BugSense first builds a **case file** itself, with four tools: the
+   incident and its first errors, which service failed first, the process
+   status (demo shop only) and a telemetry summary (error rate, p95 latency).
+2. It sends the model the instructions, the case file, and only the
+   **follow-up tools** that fit this incident (for example, no telemetry tools
+   for a dataset without telemetry).
+3. The model answers, for example, "call `search_logs` with service=shop-db".
+4. BugSense validates the parameters, runs the tool, and sends back the result
+   (cut to 2,000 characters). If a parameter was wrong, the model sees the
+   error and corrects itself.
+5. At most 4 rounds, then the model must give its final answer as JSON:
+   cause, root service, confidence, evidence, fixes, limitations.
+6. If the free tier says "too many tokens this minute", BugSense waits and
+   tries again (up to 2 minutes), or falls back to the rules in `auto` mode.
+
+**How the rules engine decides:**
+
+- configuration error in the logs → "refuses to start because of an invalid
+  configuration"
+- crash-loop events + a stack trace → "crashes during start-up (the exception)"
+- errors that **name another service** ("connection to shop-db failed") →
+  follow the chain to its end; if that service is stopped → it is the root;
+  if callers time out and it is slow → "responding too slowly"
+- otherwise → the earliest error is the starting point (low confidence)
+
+**Results (measured, real AI on Groq's free tier):**
+
+| | Rules | AI |
+|---|---|---|
+| 4 live scenarios, right root service | 4 of 4 | 4 of 4 |
+| Time | under 25 ms | 6–70 s (mostly waiting for the free limit) |
+| AI tokens | 0 | 6.6–16.7 K, average 11.8 K |
+| Hadoop network failure | missed (earliest error only) | found "ERROR IN CONTACTING RM" ×147 and NoRouteToHost; partly right (named the ResourceManager, not the network) |
+
+**Why the case file?** The free tier allows 8,000 tokens per minute. When the
+AI fetched everything itself, each step resent the whole conversation and one
+diagnosis went over the limit. Gathering the basics first cut the tokens and
+the number of AI rounds.
+
+> "The AI never sees raw log files. It asks for exactly the facts it needs
+> through tools, and every fact in its answer names the tool it came from. If
+> there is no AI, the rules use the same tools, so BugSense always gives an
+> answer, for free."
+
+### Likely questions
+
+**What is "tool calling"?**
+The model does not run code. It replies with the name of a tool and the
+parameters it wants. BugSense checks them, runs the tool, and gives the
+result back to the model.
+
+**Why tools instead of pasting the logs into the prompt?**
+A big incident has hundreds of thousands of characters of logs. Tools
+return small, exact facts: on Hadoop, 175 K characters became 9 K of evidence (18.7× smaller).
+Smaller input means cheaper, faster, and less made-up text.
+
+**Can the AI break something?**
+No. Every tool only reads. Suggested fixes are text for the developer.
+
+**Why a free, small model?**
+Cost: the evidence is small, so a small model is enough. The model is a
+setting, so a Huawei-hosted model could replace it.
+
+**How do you stop the AI from cheating in the demo?**
+The demo fault ("crash", "slow") is never written into the logs, and the
+status tool hides it. The investigator must find the cause from evidence.
+
+**What if the AI is down or the free limit is reached?**
+In `auto` mode BugSense falls back to the rules and says so in a note.
+
+**What went wrong while testing the AI, and how did you fix it?**
+Three things. (1) Too many tokens for the free tier: fixed with the case
+file. (2) It blamed the slow API on a "crash" because it misread a planned
+restart: fixed by putting the p95 latency in the case file. (3) Monitor events
+from an earlier problem misled it: the status tool got a `since` parameter.
+Also, on Hadoop the model asked about a service the status tool does not
+know, and the provider refused the call: now BugSense only offers tools that
+fit the incident, and tells the model when a call was refused.
+
+**Does the AI give the same answer every time?**
+No, a language model varies a little between runs. That is why BugSense shows
+the evidence, so the engineer can check it, and why the rules engine exists
+as a repeatable baseline.
+
+**Why is the diagnosis linked to the first log, not the incident id?**
+Detection rebuilds open incidents, which can change their id. The first log
+of an incident stays the same, so earlier diagnoses are found again.
+
+---
+
+## Research comparison (Huawei only — professor's feedback)
+
+The professor asked to research **one company, Huawei**, and not Microsoft.
+The comparison uses one paper. Full details: `RESEARCH.md`. The pitch:
+`PITCH.md`.
+
+| Paper | Huawei team | Venue | Matches |
+|---|---|---|---|
+| GRLIA: Graph-based Incident Aggregation | Huawei Cloud | IEEE/ACM ASE 2021 | Grouping incidents (Phase 5) |
+
+**What to say in one minute:**
+
+> "I studied Huawei. GRLIA, from Huawei Cloud at ASE 2021, groups the many
+> incidents caused by one failure by learning how failures cascade between
+> services, using a graph model trained on past failures and metrics. It
+> needs that history and cannot say why it grouped two incidents. BugSense
+> groups by time with stated reasons, needs no training, and sees the cascade
+> directly in OpenTelemetry traces. It then goes one step further than GRLIA:
+> it finds the probable cause with investigation tools, which GRLIA leaves to
+> the engineers. And it plugs into OpenTelemetry, which Huawei Cloud's AOM
+> and APM already accept."
+
+### GRLIA (Huawei Cloud)
+
+- **They did:** grouped incidents from one failure with a graph model trained
+  on past cascades and metrics (KPIs). Real Huawei Cloud data; deployed.
+- **Limits:** needs history and metrics, gives no reason for a grouping, and
+  is an internal company system.
+- **BugSense:** 10-minute time bursts with the reason shown, no training,
+  traces show the cascade (web → api → db and the failing hop), and Phase 7
+  explains the probable cause.
+
+### Likely questions
+
+**Why only one paper?**
+The professor asked for one company, Huawei. GRLIA is Huawei Cloud's paper on
+the same problem as BugSense's grouping, so it is the direct comparison.
+
+**Which part of BugSense goes beyond GRLIA?**
+Explaining the incident: GRLIA stops at grouping. BugSense also finds which
+service failed first, follows the failure across services, and gives a
+probable cause with evidence.
+
+**Is BugSense better than GRLIA?**
+No. GRLIA works at huge scale on private data. BugSense is an open, small
+tool that explains itself and works from the first day, without history.
 
 **Why not use deep learning like GRLIA?**
 It needs a history of past failures and gives no reason for its result.
-BugSense uses rules first so every decision can be explained and checked.
+BugSense uses rules first, so every decision can be explained and checked.
 
-**How is BugSense's AI different from Microsoft's?**
-Microsoft's models see only the incident's title and summary. BugSense's AI
-will see the actual evidence that BugSense collected and grouped, so its
-answer can point at real log lines.
+---
 
-**How did you evaluate it?**
-The parser against Loghub's official CSV (100% on 12,000 lines), incident
-counts on six real datasets with different time gaps, and four failure
-scenarios where the true cause is known.
+## The pitch to Huawei (cost and workflow)
 
-**What is the weakest part?**
-There is no labelled incident data yet, so there are no precision and recall
-figures. Grouping by time can also join unrelated problems; GRLIA avoids
-that by learning, at the cost of training data.
+Full text: `PITCH.md`.
+
+**Workflow:** Huawei's services already send OpenTelemetry to AOM/APM. An
+OpenTelemetry Collector can send a second copy to BugSense, with no change to
+the services. The engineer gets a grouped incident, the service that failed
+first, the failing hop in a trace, and a probable cause with evidence.
+
+**Cost-effectiveness, in four points:**
+
+1. **No training, no GPU.** Rules plus a general, free model.
+2. **Rules first:** clear cases cost nothing (0 tokens, under 25 ms).
+3. **The AI sees evidence, not logs:** 7–13 K characters whatever the size
+   of the incident, so AI cost does not grow with log volume.
+4. **Runs as one small process** (FastAPI + PostgreSQL), on a laptop.
+
+> "BugSense gives engineers explanations they can check, needs no training
+> data, keeps the AI's input small, plugs into OpenTelemetry which Huawei
+> Cloud already uses, and costs almost nothing per incident."
+
+**Proposed pilot:** 4 weeks; one service; label 20 past incidents; measure
+root-service accuracy, seconds and tokens per diagnosis, and time to the first
+hypothesis.
 
 ---
 
@@ -1033,7 +1237,18 @@ There is nothing extra to install or explain. Every style lives in one file,
 **Why is AI not used everywhere?**
 Parsing and grouping logs can be done reliably with normal code, which is
 faster, free and predictable. AI is used only where it adds value: explaining
-the root cause in plain language.
+the root cause in plain language. And even there, a rules engine can do the
+job without AI.
+
+**Why an OpenAI-compatible API and not one company's SDK?**
+Most providers (Groq, many others, and self-hosted models) offer the same chat
+API, so changing the model is a setting, not new code. No extra library is
+needed: BugSense calls it with httpx.
+
+**Why are wrong parameters an error and not ignored?**
+If `limit=0` or a typo like `servce=api` were silently ignored, the AI (or a
+person) would get a wrong answer without knowing. A clear error lets the AI
+correct itself.
 
 ---
 
@@ -1053,11 +1268,31 @@ the root cause in plain language.
    ```
 4. Open http://localhost:5173.
 
-If port 8000 is already used by another program, use
-`uvicorn app.main:app --reload --port 8001` and
-`VITE_API_URL=http://localhost:8001 npm run dev` instead.
+If port 8000 is already used by another program, use any free port, for
+example `uvicorn app.main:app --reload --port 8010` and
+`VITE_API_URL=http://localhost:8010 npm run dev` instead.
 
-**Things to show the examiner now:**
+For the AI engine, put a free Groq key in `backend/.env` as
+`LLM_API_KEY=...`. Without it, the rules engine is used.
+
+**Things to show the examiner now (Phase 7 and telemetry):**
+
+- **Services → Start all.** Each card shows live OpenTelemetry numbers:
+  requests per minute, error rate, p95 latency, CPU.
+- **Telemetry:** the service cards, the chart (try `latency` with `p95`, then
+  `process.cpu.time` with `rate`), and the **Traces** table. Click a trace:
+  the waterfall shows shop-web → shop-api → shop-db and their logs.
+- **Services → Database goes down,** wait 15 seconds, **See incidents,** open
+  the incident, click **Find probable cause.** Answer: shop-db is not
+  running, high confidence, with evidence from logs, process status, a
+  telemetry alert and a trace. Click **Show tool calls.**
+- Repeat with **Slow API**: the Telemetry page turns p95 red; the diagnosis
+  says shop-api is too slow (p95 about 2,300 ms).
+- **Tools:** pick `search_logs`, set `min_severity=ERROR` and `service=shop`,
+  run it. Then set `limit` to 0: a clear error. Click **Schema the AI sees.**
+- **Logs → More filters:** request ID, trace ID, time range, paging.
+
+**Earlier phases:**
 
 - **Services:** click **Start all**. All three cards turn green and healthy.
   Run **Database goes down**: shop-db stops, shop-api turns unhealthy, and
@@ -1118,6 +1353,14 @@ If port 8000 is already used by another program, use
 | Primary key | The unique ID of a row |
 | Foreign key | A column that links to a row in another table |
 | Environment variable | A setting kept outside the code |
+| OpenTelemetry (OTel) | The standard way for programs to send traces, metrics and logs |
+| OTLP | The protocol OpenTelemetry uses to send that data |
+| Span / trace | One step of a request / all the steps of one request |
+| p95 latency | 95% of requests were at least this fast |
+| Tool calling | The AI asks for a tool with parameters; the app runs it |
+| JSON Schema | A description of what parameters are allowed (types, limits) |
+| Zero-shot | Using an AI model without training it on your own data |
+| Token | A piece of a word; AI providers count (and charge) by tokens |
 | Log | A line of text a program writes about what it is doing |
 | Ingestion | Taking data into the system |
 | Raw log | A log kept exactly as it arrived |

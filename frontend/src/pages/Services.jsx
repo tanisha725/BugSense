@@ -4,6 +4,7 @@ import {
   controlService,
   deleteAllLogs,
   getMonitor,
+  getTelemetryServices,
   runScenario,
   startAllServices,
   stopAllServices,
@@ -41,6 +42,8 @@ function healthText(service) {
 function Services({ onProjectChange }) {
   const navigate = useNavigate()
   const [monitor, setMonitor] = useState(null)
+  const [telemetry, setTelemetry] = useState({})
+  const [fault, setFault] = useState('')
   const [busy, setBusy] = useState(null)
   const [message, setMessage] = useState(null)
 
@@ -49,7 +52,16 @@ function Services({ onProjectChange }) {
     let cancelled = false
     function load() {
       getMonitor()
-        .then((data) => !cancelled && setMonitor(data))
+        .then((data) => {
+          if (cancelled) return
+          setMonitor(data)
+          // Live numbers come from OpenTelemetry: the last minute of each service
+          if (data.project_id) {
+            getTelemetryServices({ project_id: data.project_id, window_minutes: 1 })
+              .then((result) => !cancelled && setTelemetry(Object.fromEntries(result.services.map((item) => [item.service, item]))))
+              .catch(() => {})
+          }
+        })
         .catch((problem) => !cancelled && setMessage(problem.message))
     }
     load()
@@ -97,7 +109,7 @@ function Services({ onProjectChange }) {
         <div>
           <h1 className="page-title">Services</h1>
           <p>
-            A small demo shop of three programs, started and watched by BugSense. No Docker needed.
+            A small demo shop of three programs, started and watched by BugSense. Live numbers come from OpenTelemetry.
           </p>
         </div>
         <div className="header-buttons">
@@ -155,6 +167,24 @@ function Services({ onProjectChange }) {
               <div><dt>Restarts</dt><dd>{service.restart_count}</dd></div>
               <div><dt>Last exit code</dt><dd>{service.exit_code ?? '-'}</dd></div>
             </dl>
+            {telemetry[service.name] && (
+              <dl className="service-facts telemetry-mini">
+                <div><dt>Requests / min</dt><dd>{telemetry[service.name].requests_per_minute}</dd></div>
+                <div>
+                  <dt>Error rate</dt>
+                  <dd className={telemetry[service.name].error_rate >= 0.2 ? 'text-bad' : ''}>
+                    {(telemetry[service.name].error_rate * 100).toFixed(0)}%
+                  </dd>
+                </div>
+                <div>
+                  <dt>p95 latency</dt>
+                  <dd className={telemetry[service.name].latency_ms.p95 >= 1000 ? 'text-bad' : ''}>
+                    {telemetry[service.name].latency_ms.p95 === null ? '-' : `${Math.round(telemetry[service.name].latency_ms.p95)} ms`}
+                  </dd>
+                </div>
+                <div><dt>CPU</dt><dd>{telemetry[service.name].cpu_percent ?? '-'}%</dd></div>
+              </dl>
+            )}
             {service.fault && <p className="fault-note">Fault switched on: {service.fault}</p>}
 
             <div className="service-actions">
@@ -164,9 +194,17 @@ function Services({ onProjectChange }) {
               <button type="button" className="button button-quiet button-small" disabled={busy !== null} onClick={() => act(service.name, () => controlService(service.name, 'stop'))}>
                 Stop
               </button>
-              <button type="button" className="button button-quiet button-small" disabled={busy !== null} onClick={() => act(service.name, () => controlService(service.name, 'restart'))}>
+              <button type="button" className="button button-quiet button-small" disabled={busy !== null} onClick={() => act(service.name, () => controlService(service.name, 'restart', service.name === 'shop-api' ? fault : undefined))}>
                 Restart
               </button>
+              {service.name === 'shop-api' && (
+                <select className="input input-small" value={fault} onChange={(event) => setFault(event.target.value)} aria-label="Fault for the next restart">
+                  <option value="">No fault</option>
+                  <option value="crash">Fault: crash</option>
+                  <option value="slow">Fault: slow</option>
+                  <option value="bad-config">Fault: bad config</option>
+                </select>
+              )}
             </div>
           </article>
         ))}

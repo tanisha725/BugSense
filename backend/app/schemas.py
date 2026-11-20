@@ -21,6 +21,7 @@ class LogCreate(BaseModel):
     service: str | None = Field(None, max_length=100)
     error_type: str | None = Field(None, max_length=100)
     request_id: str | None = Field(None, max_length=100)
+    trace_id: str | None = Field(None, pattern=r"^[0-9a-fA-F]{32}$")
     stack_trace: str | None = None
     project_id: int | None = None
 
@@ -52,6 +53,7 @@ class LogOut(BaseModel):
     error_type: str | None
     message: str | None
     request_id: str | None
+    trace_id: str | None
     stack_trace: str | None
     created_at: datetime
 

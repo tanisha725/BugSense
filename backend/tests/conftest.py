@@ -36,3 +36,18 @@ def client(engine):
 @pytest.fixture
 def session_factory(engine):
     return sessionmaker(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def isolated_state(monkeypatch, session_factory):
+    """Some services keep state between calls (caches, alert state, the
+    monitor's own database connection). Every test starts clean and uses the
+    test database, never the real one."""
+    from app.services import monitor, otlp, telemetry
+
+    monkeypatch.setattr(monitor, "session_factory", session_factory)
+    monkeypatch.setattr(monitor, "_project_id", None)
+    otlp._project_ids.clear()
+    otlp._last_detection.clear()
+    telemetry.reset_alerts()
+    yield

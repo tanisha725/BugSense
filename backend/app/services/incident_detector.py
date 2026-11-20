@@ -17,6 +17,7 @@ while resolved incidents are kept as they are.
 """
 
 import re
+import threading
 from collections import Counter
 from datetime import timedelta
 
@@ -140,8 +141,18 @@ def describe(burst):
 # ---------- Running detection for a project ----------
 
 
+# Logs arrive from several places at once (uploads, the replay, the monitor,
+# OpenTelemetry). Detection rebuilds incidents, so two runs must not overlap.
+_detect_lock = threading.Lock()
+
+
 def detect_incidents(db, project_id):
     """Rebuilds the open incidents of one project. Returns how many were created."""
+    with _detect_lock:
+        return _detect(db, project_id)
+
+
+def _detect(db, project_id):
     # Forget the old open incidents (resolved ones stay untouched)
     open_ids = select(Incident.id).where(
         Incident.project_id == project_id, Incident.status == "OPEN"

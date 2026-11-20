@@ -215,7 +215,7 @@ def browse_csv(key, search=None, offset=0, limit=50):
 
 
 # The columns of BugSense's own CSV export, used for datasets and for stored logs
-EXPORT_COLUMNS = ["line", "timestamp", "severity", "service", "error_type", "request_id", "message"]
+EXPORT_COLUMNS = ["line", "timestamp", "severity", "service", "error_type", "request_id", "trace_id", "message"]
 
 
 def to_csv(rows):

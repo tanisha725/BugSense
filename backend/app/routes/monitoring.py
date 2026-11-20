@@ -1,15 +1,21 @@
 """Service monitoring: start, stop and watch the demo services."""
 
-from fastapi import APIRouter, HTTPException
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.services import monitor
 
-router = APIRouter(prefix="/monitor", tags=["monitoring"])
+
+def remember_api_url(request: Request):
+    """The demo services send OpenTelemetry data back to this backend. Its
+    address is taken from the request, so it is right on port 8000 or 8001."""
+    monitor.set_api_url(str(request.base_url))
 
 
-def check_service(name):
-    if name not in monitor.SERVICES:
-        raise HTTPException(status_code=404, detail="Unknown service")
+router = APIRouter(prefix="/monitor", tags=["monitoring"], dependencies=[Depends(remember_api_url)])
+
+Fault = Literal[monitor.FAULTS]  # type: ignore[valid-type]
 
 
 @router.get("")
@@ -31,18 +37,25 @@ def stop_all():
 
 
 @router.post("/services/{name}/{action}")
-def control_service(name: str, action: str):
-    """action is start, stop or restart. Only the known demo services can be
-    controlled: BugSense never runs a program it was not built to run."""
-    check_service(name)
+def control_service(name: str, action: Literal["start", "stop", "restart"], fault: Fault | None = None):
+    """Starts, stops or restarts one demo service. Only the known demo services
+    can be controlled: BugSense never runs a program it was not built to run.
+
+    fault (restart only): start shop-api with a demo fault ("" removes it).
+    """
+    if name not in monitor.SERVICES:
+        raise HTTPException(status_code=404, detail="Unknown service")
+    if fault is not None:
+        if action != "restart":
+            raise HTTPException(status_code=422, detail="fault can only be given with restart")
+        if name != "shop-api" and fault:
+            raise HTTPException(status_code=422, detail="Only shop-api has demo faults")
     if action == "start":
         monitor.start(name)
     elif action == "stop":
         monitor.stop(name)
-    elif action == "restart":
-        monitor.restart(name)
     else:
-        raise HTTPException(status_code=400, detail="Action must be start, stop or restart")
+        monitor.restart(name, fault)
     return monitor.status()
 
 

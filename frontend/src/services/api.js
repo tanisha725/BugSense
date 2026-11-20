@@ -17,7 +17,12 @@ async function request(path, options) {
   const response = await fetch(`${API_URL}${path}`, options)
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    const detail = typeof body?.detail === 'string' ? body.detail : null
+    // A refused parameter comes back as a list: "limit: Input should be ≥ 1"
+    const detail = Array.isArray(body?.detail)
+      ? body.detail.map((item) => `${item.loc?.slice(-1)[0]}: ${item.msg}`).join('; ')
+      : typeof body?.detail === 'string'
+        ? body.detail
+        : null
     throw new Error(detail || `Request failed with status ${response.status}`)
   }
   return response.json()
@@ -43,9 +48,15 @@ export function getProjects() {
 
 // ---------- Logs ----------
 
-// filters: { search, severity, service, project_id, limit }
+// filters: { search, severity, min_severity, service, error_type, request_id, trace_id,
+//            incident_id, since, until, project_id } plus { order, limit, offset }
 export function getLogs(filters = {}) {
   return request(`/logs${queryString(filters)}`)
+}
+
+// How many logs match the same filters (for paging)
+export function countLogs(filters = {}) {
+  return request(`/logs/count${queryString(filters)}`)
 }
 
 export function getLogStats(projectId) {
@@ -87,9 +98,9 @@ export function deleteAllLogs(projectId) {
 
 // ---------- Incidents ----------
 
-// status: OPEN, RESOLVED or ALL
-export function getIncidents(projectId, status = 'OPEN') {
-  return request(`/incidents${queryString({ project_id: projectId, status })}`)
+// status: OPEN, RESOLVED or ALL. filters: { min_severity, service, limit, offset }
+export function getIncidents(projectId, status = 'OPEN', filters = {}) {
+  return request(`/incidents${queryString({ project_id: projectId, status, ...filters })}`)
 }
 
 export function getIncidentSummary(projectId) {
@@ -106,6 +117,15 @@ export function setIncidentStatus(id, status) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   })
+}
+
+// engine: auto, llm or rules
+export function diagnoseIncident(id, engine = 'auto') {
+  return request(`/incidents/${id}/diagnose${queryString({ engine })}`, { method: 'POST' })
+}
+
+export function getDiagnoses(id) {
+  return request(`/incidents/${id}/diagnoses`)
 }
 
 export function detectIncidents(projectId) {
@@ -126,9 +146,9 @@ export function stopAllServices() {
   return request('/monitor/stop-all', { method: 'POST' })
 }
 
-// action: start, stop or restart
-export function controlService(name, action) {
-  return request(`/monitor/services/${name}/${action}`, { method: 'POST' })
+// action: start, stop or restart. fault (restart of shop-api only): '', crash, slow, bad-config
+export function controlService(name, action, fault) {
+  return request(`/monitor/services/${name}/${action}${queryString({ fault })}`, { method: 'POST' })
 }
 
 export function runScenario(key) {
@@ -178,4 +198,42 @@ export function startStream(key, speed) {
 
 export function stopStream() {
   return request('/datasets/stream/stop', { method: 'POST' })
+}
+
+// ---------- Telemetry (OpenTelemetry) ----------
+
+export function getTelemetryServices(params) {
+  return request(`/telemetry/services${queryString(params)}`)
+}
+
+export function getMetricNames(params) {
+  return request(`/telemetry/metrics${queryString(params)}`)
+}
+
+// { metric, project_id, service, window_minutes, step_seconds, aggregation }
+export function getMetricSeries(params) {
+  return request(`/telemetry/series${queryString(params)}`)
+}
+
+// { project_id, service, status, min_duration_ms, window_minutes, limit }
+export function getTraces(params) {
+  return request(`/telemetry/traces${queryString(params)}`)
+}
+
+export function getTrace(traceId) {
+  return request(`/telemetry/traces/${traceId}`)
+}
+
+// ---------- Investigation tools ----------
+
+export function getTools() {
+  return request('/tools')
+}
+
+export function getAiConfig() {
+  return request('/tools/config')
+}
+
+export function runTool(name, parameters) {
+  return postJson(`/tools/${name}`, parameters)
 }

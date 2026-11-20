@@ -9,6 +9,8 @@ import IncidentDetail from './pages/IncidentDetail.jsx'
 import Incidents from './pages/Incidents.jsx'
 import Logs from './pages/Logs.jsx'
 import Services from './pages/Services.jsx'
+import Telemetry from './pages/Telemetry.jsx'
+import Tools from './pages/Tools.jsx'
 import { getHealth, getIncidentSummary, getProjects, getStreamStatus } from './services/api.js'
 
 // The chosen project is remembered in the browser between visits
@@ -100,6 +102,8 @@ function App() {
                 />
               }
             />
+            <Route path="/telemetry" element={<Telemetry project={project} projectId={projectId} />} />
+            <Route path="/tools" element={<Tools />} />
             <Route
               path="/logs"
               element={<Logs project={project} projectId={projectId} live={live} onChange={loadProjects} />}

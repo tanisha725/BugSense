@@ -8,6 +8,9 @@ The environment variable SHOP_FAULT switches on a failure for the demo:
   crash       - starts, then crashes with an unhandled error (crash loop)
   bad-config  - starts with a broken database address and refuses to run
   slow        - many requests become slow, some time out
+
+Each checkout is a span of an OpenTelemetry trace, and the call to shop-db is
+a child span, so a failure shows exactly which hop broke (see otel.py).
 """
 
 import json
@@ -20,6 +23,8 @@ import urllib.request
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import otel
+
 SERVICE = "shop-api"
 PORT = 9101
 FAULT = os.environ.get("SHOP_FAULT", "")
@@ -28,16 +33,21 @@ DB_URL = "postgres//127.0.0.1:9102" if FAULT == "bad-config" else "http://127.0.
 # Talk to the other services directly. (By default Python first looks up the
 # computer's proxy settings, which can make the first request hang on a Mac.)
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+telemetry = otel.setup(SERVICE)
 
 
 def log(level, message):
     """Prints one log line in the format BugSense understands."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"{now} {level} [{SERVICE}] {message}", flush=True)
+    trace_id = telemetry.trace_id()
+    suffix = f" trace_id={trace_id}" if trace_id else ""
+    print(f"{now} {level} [{SERVICE}] {message}{suffix}", flush=True)
 
 
 def ask_database(path, request_id):
-    request = urllib.request.Request(f"{DB_URL}{path}", headers={"X-Request-ID": request_id})
+    headers = {"X-Request-ID": request_id}
+    telemetry.inject(headers)  # the trace continues in shop-db
+    request = urllib.request.Request(f"{DB_URL}{path}", headers=headers)
     with OPENER.open(request, timeout=1) as response:
         return json.loads(response.read())
 
@@ -58,20 +68,35 @@ class Handler(BaseHTTPRequestHandler):
 
     def checkout(self, request_id):
         started = time.time()
+        with telemetry.span("GET /checkout", kind="server", headers=self.headers,
+                            attributes={"http.route": "/checkout", "request_id": request_id}) as server:
+            status = self.place_order(request_id, started, server)
+        telemetry.record(time.time() - started, {"http.route": "/checkout", "http.response.status_code": status})
+
+    def place_order(self, request_id, started, server):
         if FAULT == "slow" and random.random() < 0.6:
             time.sleep(random.uniform(1.5, 3.0))  # something makes requests hang
-        try:
-            ask_database("/query", request_id)
-        except OSError as problem:
-            reason = getattr(problem, "reason", problem)
+        with telemetry.span("shop-db SELECT", kind="client", attributes={"server.address": "127.0.0.1",
+                                                                          "server.port": 9102}) as call:
+            try:
+                ask_database("/query", request_id)
+            except OSError as problem:
+                reason = getattr(problem, "reason", problem)
+                telemetry.fail(call, f"connection to shop-db failed: {reason}")
+                failed = True
+            else:
+                failed = False
+        if failed:
             log("ERROR", f"OperationalError: connection to shop-db at 127.0.0.1:9102 failed: {reason} request_id={request_id}")
             log("ERROR", f"GET /checkout returned 503 Service Unavailable request_id={request_id}")
+            telemetry.fail(server, "503: database unavailable")
             self.reply(503, {"error": "database unavailable"})
-            return
+            return 503
         took = (time.time() - started) * 1000
         level = "WARNING" if took > 1000 else "INFO"
         log(level, f"GET /checkout 200 in {took:.0f} ms request_id={request_id}")
         self.reply(200, {"order": "created"})
+        return 200
 
     def reply(self, status, body):
         self.send_response(status)
