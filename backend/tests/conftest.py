@@ -8,6 +8,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.models import User
+from app.routes.auth import current_user
 
 
 @pytest.fixture
@@ -20,15 +22,28 @@ def engine():
     return engine
 
 
-@pytest.fixture
-def client(engine):
-    """A fake browser that calls the API, connected to the test database."""
-
+def use_test_database(engine):
     def get_test_db():
         with Session(engine) as db:
             yield db
 
     app.dependency_overrides[get_db] = get_test_db
+
+
+@pytest.fixture
+def client(engine):
+    """A fake browser that calls the API, connected to the test database and
+    already signed in (the sign-in itself is tested with anonymous_client)."""
+    use_test_database(engine)
+    app.dependency_overrides[current_user] = lambda: User(id=1, name="Tester", email="t@example.com")
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anonymous_client(engine):
+    """A fake browser that is not signed in."""
+    use_test_database(engine)
     yield TestClient(app)
     app.dependency_overrides.clear()
 

@@ -9,9 +9,19 @@ import IncidentDetail from './pages/IncidentDetail.jsx'
 import Incidents from './pages/Incidents.jsx'
 import Logs from './pages/Logs.jsx'
 import Services from './pages/Services.jsx'
+import SignIn from './pages/SignIn.jsx'
 import Telemetry from './pages/Telemetry.jsx'
 import Tools from './pages/Tools.jsx'
-import { getHealth, getIncidentSummary, getProjects, getStreamStatus } from './services/api.js'
+import {
+  SIGNED_OUT_EVENT,
+  getHealth,
+  getIncidentSummary,
+  getMe,
+  getProjects,
+  getStreamStatus,
+  getToken,
+  setToken,
+} from './services/api.js'
 
 // The chosen project is remembered in the browser between visits
 function savedProjectId() {
@@ -22,7 +32,8 @@ function savedProjectId() {
   }
 }
 
-function App() {
+// Everything after signing in
+function Workspace({ user, onSignOut }) {
   const [health, setHealth] = useState(null) // null while checking
   const [projects, setProjects] = useState([])
   const [projectId, setProjectId] = useState(savedProjectId)
@@ -79,6 +90,8 @@ function App() {
           onProjectChange={chooseProject}
           stream={stream}
           criticalIncidents={criticalIncidents}
+          user={user}
+          onSignOut={onSignOut}
         />
         <main className="content">
           <Routes>
@@ -138,6 +151,50 @@ function App() {
       </div>
     </BrowserRouter>
   )
+}
+
+// Shows the sign-in page until the user is signed in, then the workspace
+function App() {
+  // undefined while checking a saved token, null when signed out
+  const [user, setUser] = useState(getToken() ? undefined : null)
+
+  useEffect(() => {
+    if (!getToken()) return
+    getMe()
+      .then(setUser)
+      .catch(() => {
+        setToken(null)
+        setUser(null)
+      })
+  }, [])
+
+  // Any request that comes back "please sign in" (expired token) signs out
+  useEffect(() => {
+    const signedOut = () => setUser(null)
+    window.addEventListener(SIGNED_OUT_EVENT, signedOut)
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, signedOut)
+  }, [])
+
+  function handleSignedIn(token, signedInUser) {
+    setToken(token)
+    setUser(signedInUser)
+  }
+
+  function handleSignOut() {
+    setToken(null)
+    setUser(null)
+  }
+
+  if (user === undefined) return <p className="empty">Loading...</p>
+  if (user === null) {
+    return (
+      <>
+        <Backdrop />
+        <SignIn onSignedIn={handleSignedIn} />
+      </>
+    )
+  }
+  return <Workspace user={user} onSignOut={handleSignOut} />
 }
 
 export default App

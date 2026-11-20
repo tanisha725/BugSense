@@ -31,6 +31,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Log, Project
+from app.services import auth
 from app.services.incident_detector import detect_incidents
 from app.services.log_parser import parse_log, split_into_entries
 from app.services.projects import find_or_create_project
@@ -65,8 +66,11 @@ TICK = 0.5  # how often the watcher looks at the services
 FAULTS = ("", "crash", "slow", "bad-config")  # what shop-api can be started with
 
 # Where the services send OpenTelemetry data: this backend's own address.
-# The monitoring routes set it from the request, so it is right on any port.
-api_url = os.getenv("BUGSENSE_URL", "http://127.0.0.1:8000")
+# On a host such as Render the port is in $PORT, and the services talk to the
+# backend directly inside the server. Locally the monitoring routes set it
+# from the request, so it is right on any port.
+_fixed_url = os.getenv("BUGSENSE_URL") or (f"http://127.0.0.1:{os.environ['PORT']}" if os.getenv("PORT") else None)
+api_url = _fixed_url or "http://127.0.0.1:8000"
 
 # Tests replace this with a session for their own test database
 session_factory = SessionLocal
@@ -205,6 +209,9 @@ def _start(name):
         "BUGSENSE_PROJECT": PROJECT_NAME,
         "NO_PROXY": "127.0.0.1,localhost",
     }
+    if auth.ingest_token():
+        # The OpenTelemetry SDK sends these headers with every export
+        environment["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Bearer%20{auth.ingest_token()}"
     process = subprocess.Popen(
         [sys.executable, config["script"]],
         cwd=DEMO_FOLDER,
@@ -336,7 +343,8 @@ def _ensure_watcher():
 
 def set_api_url(url):
     global api_url
-    api_url = url.rstrip("/")
+    if not _fixed_url:
+        api_url = url.rstrip("/")
 
 
 def start(name):

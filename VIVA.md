@@ -6,7 +6,7 @@ Simple explanations of everything built so far. Updated after every phase.
 Phase 4 (Log processing), real-world data, live mode, the new interface,
 Phase 5 (Incident detection), Phase 6 (Service monitoring), OpenTelemetry
 monitoring, Phase 7 (AI diagnosis with tools), Phase 8 (root cause
-ordering), and the Huawei pitch
+ordering), login, deployment setup, and the Huawei pitch
 
 ---
 
@@ -1233,6 +1233,46 @@ before shop-api finishes, so shop-web "failed first" in 6 of 11 requests. But
 shop-web's errors name shop-api ("did not answer"), and shop-api is the
 deepest failing step in all 11 failed traces, so shop-api still comes first.
 Lesson: for slowness, traces are better evidence than the order of logs.
+
+---
+
+## Login and deployment
+
+**Login:** every feature now needs a signed-in user. On the first visit
+BugSense asks to create the **owner account**; after that, sign-up is closed
+(unless `ALLOW_SIGNUP=true`), so strangers cannot use it or spend the AI
+quota once it is online.
+
+| Part | How it works |
+|---|---|
+| Passwords | Never stored. Only a **scrypt hash** with a random salt (slow on purpose, so stolen hashes are hard to guess) |
+| Token | After sign-in the browser gets "user id . expiry . signature". The signature uses `SECRET_KEY`, so the token cannot be changed or forged. It lasts 7 days |
+| Every request | Sends "Authorization: Bearer <token>"; a missing or wrong token gets 401 |
+| OpenTelemetry | Programs are not people: they use a separate `INGEST_TOKEN` |
+
+**Deployment:** on **Render**, from GitHub, with no Docker. `render.yaml`
+(a "Blueprint") creates three parts: the backend (Python), the frontend
+(static files) and PostgreSQL. Secrets (`SECRET_KEY`, `INGEST_TOKEN`, the
+Groq key) live in Render's settings, never in GitHub. Every `git push`
+deploys the new version. Guide: `DEPLOY.md`.
+
+### Likely questions
+
+**Why not store the password and compare it?**
+If the database leaked, every password would leak. With a salted scrypt hash,
+the password cannot be read back, and guessing is slow.
+
+**Why does a token need a signature?**
+Otherwise anyone could write "user 1" into a token and become the owner.
+Only the server knows `SECRET_KEY`, so only the server can make valid tokens.
+
+**Why is sign-up closed after the first account?**
+Once BugSense is on the internet, anyone could create an account, delete
+logs or use up the free AI quota.
+
+**Why Render?**
+It builds from GitHub on its own servers (no Docker on my laptop), has free
+plans, and one file (`render.yaml`) describes the whole setup.
 
 ---
 

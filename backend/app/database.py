@@ -13,6 +13,11 @@ load_dotenv()
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql+psycopg://localhost:5432/bugsense"
 )
+# Hosts such as Render give "postgres://..." or "postgresql://...". SQLAlchemy
+# needs to be told which driver to use: psycopg.
+for prefix in ("postgres://", "postgresql://"):
+    if DATABASE_URL.startswith(prefix):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(prefix):]
 
 # The engine is the actual connection to PostgreSQL
 engine = create_engine(DATABASE_URL)

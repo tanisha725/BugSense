@@ -4,14 +4,15 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import models  # noqa: F401 - importing registers the tables on Base
 from app.database import Base, engine
-from app.routes import datasets, incidents, logs, monitoring, projects, telemetry, tools
+from app.routes import auth, datasets, incidents, logs, monitoring, projects, telemetry, tools
+from app.routes.auth import current_user, ingest_allowed
 from app.services import monitor, replay
 
 
@@ -55,28 +56,42 @@ async def lifespan(app: FastAPI):
     monitor.stop_all()
 
 
-app = FastAPI(title="BugSense API", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="BugSense API", version="0.9.0", lifespan=lifespan)
 
-# The React app runs on a different port (5173) than this API (8000).
-# Browsers block such cross-origin requests unless the API allows them (CORS).
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+def frontend_origins():
+    """The addresses of the React app that may call this API (CORS). Several
+    can be given, separated by commas; a bare host name gets https://."""
+    origins = []
+    for value in os.getenv("FRONTEND_URL", "http://localhost:5173").split(","):
+        value = value.strip().rstrip("/")
+        if value:
+            origins.append(value if "://" in value else f"https://{value}")
+    return origins
+
+
+# The React app runs on a different address than this API. Browsers block
+# such cross-origin requests unless the API allows them (CORS).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],
+    allow_origins=frontend_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Each feature keeps its endpoints in its own file inside app/routes/
-app.include_router(logs.router)
-app.include_router(projects.router)
-app.include_router(datasets.router)
-app.include_router(incidents.router)
-app.include_router(monitoring.router)
-app.include_router(telemetry.receiver)
-app.include_router(telemetry.router)
-app.include_router(tools.router)
+# Each feature keeps its endpoints in its own file inside app/routes/.
+# Every feature needs a signed-in user; sign-in itself and /health do not.
+signed_in = [Depends(current_user)]
+app.include_router(auth.router)
+app.include_router(logs.router, dependencies=signed_in)
+app.include_router(projects.router, dependencies=signed_in)
+app.include_router(datasets.router, dependencies=signed_in)
+app.include_router(incidents.router, dependencies=signed_in)
+app.include_router(monitoring.router, dependencies=signed_in)
+app.include_router(telemetry.router, dependencies=signed_in)
+app.include_router(tools.router, dependencies=signed_in)
+# OpenTelemetry senders are programs, not people: they use the ingest token
+app.include_router(telemetry.receiver, dependencies=[Depends(ingest_allowed)])
 
 
 @app.get("/health")

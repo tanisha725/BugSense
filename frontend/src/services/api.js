@@ -1,6 +1,34 @@
 // All calls to the backend go through this file,
 // so the backend address lives in exactly one place.
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// A bare host name (what a hosting service may give) gets https:// in front.
+const CONFIGURED_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = (CONFIGURED_URL.includes('://') ? CONFIGURED_URL : `https://${CONFIGURED_URL}`).replace(/\/$/, '')
+
+// ---------- The sign-in token ----------
+// Kept in the browser, and sent with every request. Storage can be blocked
+// (for example in private mode), so every access is guarded.
+
+const TOKEN_KEY = 'bugsense.token'
+
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // Not stored: the user stays signed in until the page is reloaded
+  }
+}
+
+// Tells the app the user is no longer signed in (expired or wrong token)
+export const SIGNED_OUT_EVENT = 'bugsense:signed-out'
 
 // Turns { search: 'x', severity: '' } into "?search=x" (empty values are left out)
 function queryString(params = {}) {
@@ -13,8 +41,14 @@ function queryString(params = {}) {
 }
 
 // Sends one request and returns the JSON reply, or throws a readable error.
-async function request(path, options) {
-  const response = await fetch(`${API_URL}${path}`, options)
+async function request(path, options = {}) {
+  const token = getToken()
+  const headers = { ...(options.headers || {}), ...(token && { Authorization: `Bearer ${token}` }) }
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers })
+  if (response.status === 401 && !path.startsWith('/auth/')) {
+    setToken(null)
+    window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     // A refused parameter comes back as a list: "limit: Input should be ≥ 1"
@@ -34,6 +68,31 @@ function postJson(path, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
+}
+
+// Plain links (downloads) cannot send a header, so the token goes in the address
+function withToken(url) {
+  const token = getToken()
+  if (!token) return url
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+}
+
+// ---------- Signing in ----------
+
+export function getAuthStatus() {
+  return request('/auth/status')
+}
+
+export function signIn(email, password) {
+  return postJson('/auth/signin', { email, password })
+}
+
+export function signUp(name, email, password) {
+  return postJson('/auth/signup', { name, email, password })
+}
+
+export function getMe() {
+  return request('/auth/me')
 }
 
 // ---------- Health and projects ----------
@@ -85,7 +144,7 @@ export function uploadLogFile(file, projectId) {
 
 // A plain link: downloads the stored logs (with the same filters) as a CSV file
 export function exportLogsUrl(filters) {
-  return `${API_URL}/logs/export${queryString(filters)}`
+  return withToken(`${API_URL}/logs/export${queryString(filters)}`)
 }
 
 export function deleteLog(id) {
@@ -173,7 +232,7 @@ export function getDataset(key, params) {
 
 // A plain link, so the browser downloads the original file
 export function datasetDownloadUrl(key) {
-  return `${API_URL}/datasets/${key}/download`
+  return withToken(`${API_URL}/datasets/${key}/download`)
 }
 
 // One page of Loghub's official CSV for a dataset: { search, offset, limit }
@@ -182,11 +241,11 @@ export function getDatasetCsv(key, params) {
 }
 
 export function datasetCsvUrl(key) {
-  return `${API_URL}/datasets/${key}/csv/download`
+  return withToken(`${API_URL}/datasets/${key}/csv/download`)
 }
 
 export function parsedCsvUrl(key) {
-  return `${API_URL}/datasets/${key}/parsed.csv`
+  return withToken(`${API_URL}/datasets/${key}/parsed.csv`)
 }
 
 export function importDataset(key) {

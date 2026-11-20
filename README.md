@@ -18,6 +18,13 @@ the failure started to the ones that only failed after it.
 
 ## Features so far
 
+- **Login:** every feature needs a signed-in user. The first account becomes
+  the owner, then sign-up closes (unless `ALLOW_SIGNUP=true`). Passwords are
+  stored as scrypt hashes; sign-in tokens are signed with `SECRET_KEY` and
+  last 7 days. OpenTelemetry senders use a separate `INGEST_TOKEN`
+- **Ready to deploy:** `render.yaml` creates the backend, frontend and
+  database on Render from this repository. Step-by-step guide:
+  [DEPLOY.md](DEPLOY.md)
 - **Root cause ordering (Phase 8):** every incident shows "Where did it
   start?": its services ranked from probable origin to affected, with points
   and reasons. Evidence: who failed first in each request (request IDs and
@@ -183,6 +190,9 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 | `VITE_API_URL` | frontend | `http://localhost:8000` |
 | `DATABASE_URL` | backend  | `postgresql+psycopg://localhost:5432/bugsense` |
 | `LLM_API_KEY`  | backend  | empty: no AI, the rule-based investigator is used |
+| `SECRET_KEY`   | backend  | random at each start (everyone signs in again after a restart); set it when deployed |
+| `ALLOW_SIGNUP` | backend  | `false`: only the first account can be created |
+| `INGEST_TOKEN` | backend  | empty: anyone may send OpenTelemetry data; set it when deployed |
 | `LLM_BASE_URL` | backend  | `https://api.groq.com/openai/v1` |
 | `LLM_MODEL`    | backend  | `openai/gpt-oss-20b` (small, free tier, supports tools) |
 
@@ -190,7 +200,10 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 
 | Method | Path      | Description              |
 | ------ | --------- | ------------------------ |
-| GET    | `/health` | Checks the backend and database are up |
+| GET    | `/health` | Checks the backend and database are up (no sign-in needed) |
+| GET    | `/auth/status` | Whether an account can be created (no sign-in needed) |
+| POST   | `/auth/signup`, `/auth/signin` | Creates an account / signs in; returns a token |
+| GET    | `/auth/me` | The signed-in user |
 | POST   | `/logs` | Stores one structured JSON log |
 | POST   | `/logs/text` | Parses and stores pasted log text |
 | POST   | `/logs/upload` | Parses and stores logs from a `.log`, `.txt`, `.json` or `.jsonl` file (max 2 MB) |

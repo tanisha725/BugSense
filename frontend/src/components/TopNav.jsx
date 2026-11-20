@@ -11,7 +11,7 @@ const PAGES = [
 ]
 
 // The floating bar at the top: logo, page links, project picker and status.
-function TopNav({ health, projects, projectId, onProjectChange, stream, criticalIncidents }) {
+function TopNav({ health, projects, projectId, onProjectChange, stream, criticalIncidents, user, onSignOut }) {
   const allGood = health?.backend === 'online' && health?.database === 'connected'
 
   let status = { tone: 'neutral', text: 'Checking...' }
@@ -68,6 +68,11 @@ function TopNav({ health, projects, projectId, onProjectChange, stream, critical
           <span className={`dot ${status.tone}`} />
           {status.text}
         </span>
+        {user && (
+          <button type="button" className="user-pill" onClick={onSignOut} title={`Signed in as ${user.email}. Click to sign out.`}>
+            {user.name} · Sign out
+          </button>
+        )}
       </div>
     </header>
   )
