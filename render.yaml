@@ -48,7 +48,7 @@ services:
       # If Render gives the backend a different address, change it here and
       # redeploy this service.
       - key: VITE_API_URL
-        value: https://bugsense-api.onrender.com
+        value: https://bugsense-api-o7ri.onrender.com
       # Shown in the top bar: which container served the page
       - key: UI_NAME
         value: render
