@@ -9,6 +9,7 @@ import {
   startAllServices,
   stopAllServices,
 } from '../services/api.js'
+import PageGuide from '../components/PageGuide.jsx'
 
 const STATUS_TEXT = {
   running: 'Running',
@@ -121,6 +122,8 @@ function Services({ onProjectChange }) {
           </button>
         </div>
       </header>
+
+      <PageGuide page="services" />
 
       {/* How a checkout travels through the shop */}
       <section className="glass card chain">

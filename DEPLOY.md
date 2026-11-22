@@ -1,5 +1,8 @@
 # Deploying BugSense
 
+> **Main deployment: Podman on Oracle Cloud (free), see [SERVER.md](SERVER.md).**
+> Render, below, is an alternative that does not use containers.
+
 BugSense goes online on **Render**, straight from the GitHub repository. No
 Docker is needed: Render builds everything on its own servers. The file
 [`render.yaml`](render.yaml) describes the whole setup, so Render creates

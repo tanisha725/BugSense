@@ -1,0 +1,119 @@
+# BugSense on Podman: every part in its own container.
+#
+#   podman compose up -d --build      (or: ./podman.sh up)
+#   open http://localhost:8080
+#
+#   browser ──► gateway :8080 ──┬──► web-main     (the UI)
+#                               ├──► web-backup   (the same UI, used when web-main is down)
+#                               └──► api :8000    (FastAPI + the demo shop) ──► db (PostgreSQL)
+#
+# Secrets (SECRET_KEY, INGEST_TOKEN, POSTGRES_PASSWORD) come from the file
+# .env next to this one; ./podman.sh creates it with random values.
+# The AI key comes from backend/.env (LLM_API_KEY), the same file as locally.
+
+name: bugsense
+
+networks:
+  bugsense:
+    ipam:
+      config:
+        - subnet: 10.90.7.0/24
+
+volumes:
+  bugsense-db-data:      # the database files survive restarts and rebuilds
+
+x-always: &always
+  restart: always
+
+services:
+  db:
+    <<: *always
+    image: docker.io/library/postgres:17-alpine
+    container_name: bugsense-db
+    environment:
+      POSTGRES_DB: bugsense
+      POSTGRES_USER: bugsense
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ./podman.sh up once to create .env}
+    volumes:
+      - bugsense-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bugsense -d bugsense"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 256m
+    networks:
+      bugsense:
+        ipv4_address: 10.90.7.5
+
+  api:
+    <<: *always
+    build:
+      context: .
+      dockerfile: containers/api.Containerfile
+    image: localhost/bugsense-api:latest
+    container_name: bugsense-api
+    env_file:
+      - backend/.env       # LLM_API_KEY
+    environment:
+      DATABASE_URL: postgresql://bugsense:${POSTGRES_PASSWORD}@db:5432/bugsense
+      SECRET_KEY: ${SECRET_KEY}
+      INGEST_TOKEN: ${INGEST_TOKEN}
+      FRONTEND_URL: http://localhost:8080
+      # true lets other people create accounts (./podman.sh signup on|off)
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      # The demo shop runs inside this container and reports to this API
+      BUGSENSE_URL: http://127.0.0.1:8000
+    depends_on:
+      - db
+    mem_limit: 768m
+    networks:
+      bugsense:
+        ipv4_address: 10.90.7.10
+
+  web-main:
+    <<: *always
+    build:
+      context: .
+      dockerfile: containers/web.Containerfile
+    image: localhost/bugsense-web:latest
+    container_name: bugsense-web-main
+    environment:
+      UI_NAME: web-main
+    mem_limit: 64m
+    networks:
+      bugsense:
+        ipv4_address: 10.90.7.21
+
+  # The backup: the same image as web-main. The gateway uses it only while
+  # web-main does not answer.
+  web-backup:
+    <<: *always
+    image: localhost/bugsense-web:latest
+    container_name: bugsense-web-backup
+    environment:
+      UI_NAME: web-backup
+    depends_on:
+      - web-main          # web-main builds the image this one uses
+    mem_limit: 64m
+    networks:
+      bugsense:
+        ipv4_address: 10.90.7.22
+
+  gateway:
+    <<: *always
+    build:
+      context: .
+      dockerfile: containers/gateway.Containerfile
+    image: localhost/bugsense-gateway:latest
+    container_name: bugsense-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+      - web-main
+      - web-backup
+    mem_limit: 64m
+    networks:
+      bugsense:
+        ipv4_address: 10.90.7.30

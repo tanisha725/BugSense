@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getDatasets, importDataset, startStream, stopStream } from '../services/api.js'
+import PageGuide from '../components/PageGuide.jsx'
 
 const SPEEDS = [1, 2, 5, 10, 20]
 
@@ -58,6 +59,8 @@ function Datasets({ stream, onStreamChange, onProjectChange }) {
           Import one to analyse it, or stream it in live.
         </p>
       </header>
+
+      <PageGuide page="datasets" />
 
       {stream?.running && streaming && (
         <section className="card dark stream-panel">

@@ -8,6 +8,7 @@ import SeverityBreakdown from '../components/SeverityBreakdown.jsx'
 import StatCard from '../components/StatCard.jsx'
 import IncidentRow from '../components/IncidentRow.jsx'
 import { getIncidentSummary, getIncidents, getLogStats, getTimeline } from '../services/api.js'
+import PageGuide from '../components/PageGuide.jsx'
 
 function Dashboard({ health, project, projectId, live }) {
   const [stats, setStats] = useState(null)
@@ -56,6 +57,8 @@ function Dashboard({ health, project, projectId, live }) {
           {live && ' · updating live'}
         </p>
       </header>
+
+      <PageGuide page="overview" />
 
       <div className="bento">
         <div className="area-pulse">

@@ -2352,7 +2352,7 @@ code {
 
 .telemetry-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -2955,4 +2955,593 @@ code {
 
 .user-pill:hover {
   color: var(--ink);
+}
+
+/* ---------- Which UI container served the page (Podman) ---------- */
+.container-pill {
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #0a7d0a;
+  background: rgba(12, 163, 12, 0.12);
+  border-radius: 999px;
+}
+
+.container-pill.backup {
+  color: #7a4b00;
+  background: rgba(250, 178, 25, 0.25);
+}
+
+.text-good {
+  color: #0a7d0a;
+}
+
+/* ---------- Plain-language guide at the top of a page ---------- */
+.page-guide {
+  margin-bottom: 18px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-small);
+  box-shadow: var(--shadow);
+}
+
+.page-guide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.page-guide-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.page-guide-chevron {
+  margin-left: auto;
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.page-guide-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 28px;
+  padding: 0 16px 16px 52px;
+  font-size: 13.5px;
+}
+
+.page-guide-label {
+  margin: 4px 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.page-guide-body ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.page-guide-body li + li {
+  margin-top: 4px;
+}
+
+.page-guide-body dl {
+  margin: 0;
+}
+
+.page-guide-body dl div + div {
+  margin-top: 5px;
+}
+
+.page-guide-body dt {
+  display: inline;
+  font-weight: 700;
+}
+
+.page-guide-body dt::after {
+  content: ': ';
+}
+
+.page-guide-body dd {
+  display: inline;
+  margin: 0;
+}
+
+.page-guide-why {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border-radius: 10px;
+}
+
+/* ---------- Tools: the question each tool answers ---------- */
+.tool-question {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.tool-item.active .tool-question {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.tool-question-big {
+  margin: 4px 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---------- Telemetry: live indicator and verdicts ---------- */
+.live-card {
+  margin-bottom: 18px;
+}
+
+.live-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  background: rgba(17, 17, 19, 0.06);
+  border-radius: 999px;
+}
+
+.live-badge.on {
+  color: #fff;
+  background: var(--dark);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--info);
+  border-radius: 50%;
+}
+
+.live-badge.on .live-dot {
+  background: #33d633;
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(51, 214, 51, 0.7); }
+  100% { box-shadow: 0 0 0 9px rgba(51, 214, 51, 0); }
+}
+
+.live-summary {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.live-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: flow;
+}
+
+.live-flow li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px 10px 40px;
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  counter-increment: flow;
+}
+
+.live-flow li::before {
+  content: counter(flow);
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.live-flow span {
+  color: var(--muted);
+}
+
+.service-verdict {
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: rgba(17, 17, 19, 0.05);
+}
+
+.service-verdict.good {
+  color: #0a7d0a;
+  background: rgba(12, 163, 12, 0.1);
+}
+
+.service-verdict.bad {
+  color: #a31f1f;
+  background: rgba(208, 59, 59, 0.1);
+}
+
+/* ---------- Why BugSense (the pitch page) ---------- */
+.value-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.value-card h3 {
+  margin: 2px 0 10px;
+}
+
+.value-card ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+}
+
+.value-card li + li {
+  margin-top: 6px;
+}
+
+.value-kicker {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.fit-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 16px;
+}
+
+.fit-box {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.fit-box.accent {
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.fit-arrow {
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.fit-split {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-table td {
+  vertical-align: top;
+  white-space: normal;
+}
+
+.minutes {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.minutes.bad {
+  color: #a31f1f;
+  background: rgba(208, 59, 59, 0.1);
+}
+
+.minutes.good {
+  color: #0a7d0a;
+  background: rgba(12, 163, 12, 0.12);
+}
+
+.workflow-total td {
+  font-weight: 800;
+}
+
+.calc-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 24px;
+}
+
+.calc-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  align-content: start;
+}
+
+.calc-group {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.calc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calc-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.calc-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calc-input .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.calc-input .calc-currency {
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.calc-suffix,
+.calc-help {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.calc-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calc-big {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  color: #fff;
+  background: var(--dark);
+  border-radius: var(--radius-small);
+}
+
+.calc-big-label {
+  font-size: 12.5px;
+  color: var(--dark-muted);
+}
+
+.calc-big-value {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.calc-big-note {
+  font-size: 12.5px;
+  color: var(--dark-muted);
+}
+
+.calc-lines {
+  margin: 0;
+}
+
+.calc-lines div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13.5px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calc-lines dt {
+  color: var(--ink-2);
+}
+
+.calc-lines dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.pilot-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.pilot-steps li + li {
+  margin-top: 6px;
+}
+
+@media (max-width: 1180px) {
+  .value-grid,
+  .live-flow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .calc-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .value-grid,
+  .live-flow,
+  .page-guide-body,
+  .calc-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .page-guide-body {
+    padding-left: 16px;
+  }
+
+  .calc-big-value {
+    font-size: 28px;
+  }
+}
+
+/* ---------- Navigation: two tidy rows ----------
+   Row 1: logo on the left, project / status / user on the right.
+   Row 2: every page as an equal-width tab, centred under them. */
+.topnav {
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'brand right'
+    'pills pills';
+  row-gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 28px;
+}
+
+.topnav > .brand {
+  grid-area: brand;
+}
+
+.topnav-right {
+  grid-area: right;
+}
+
+.nav-pills {
+  grid-area: pills;
+  justify-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.nav-pill {
+  padding: 9px 10px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.service-description {
+  min-height: 2.9em;
+}
+
+.workflow-table + .muted,
+.table-wrap + .muted.small {
+  margin-top: 12px;
+}
+
+.workflow-total td:first-child {
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .topnav {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'brand'
+      'right'
+      'pills';
+  }
+
+  .topnav-right {
+    grid-column: auto;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .nav-pills {
+    justify-self: stretch;
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .nav-pills {
+    grid-template-columns: repeat(2, 1fr);
+    border-radius: 20px;
+  }
+}
+
+/* Medium screens: two cards side by side, the third full width (no gap) */
+@media (max-width: 1180px) and (min-width: 761px) {
+  .area-services {
+    grid-column: 1 / -1;
+  }
+}
+
+.live-badge.logs {
+  color: #fff;
+  background: var(--accent);
+}
+
+/* Time-window buttons never wrap ("5 min", not "5 / min") */
+.segmented {
+  flex-shrink: 0;
+}
+
+.segmented button {
+  white-space: nowrap;
 }

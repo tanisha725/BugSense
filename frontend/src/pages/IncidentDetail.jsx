@@ -7,6 +7,7 @@ import LogTable from '../components/LogTable.jsx'
 import StatCard from '../components/StatCard.jsx'
 import { getIncident, setIncidentStatus } from '../services/api.js'
 import { formatDuration, formatMoment } from '../services/format.js'
+import PageGuide from '../components/PageGuide.jsx'
 
 const SEVERITY_RULES = [
   ['CRITICAL', 'any CRITICAL log, or errors in 3 or more services'],
@@ -75,6 +76,8 @@ function IncidentDetail({ live }) {
           </button>
         </div>
       </header>
+
+      <PageGuide page="incident" />
 
       <div className="detail-stats">
         <StatCard label="Errors" value={incident.error_count} note="ERROR and CRITICAL logs" tone="bad" />

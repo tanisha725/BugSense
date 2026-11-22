@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import LogForm from '../components/LogForm.jsx'
 import LogTable from '../components/LogTable.jsx'
 import { countLogs, deleteAllLogs, deleteLog, exportLogsUrl, getLogs } from '../services/api.js'
+import PageGuide from '../components/PageGuide.jsx'
 
 const NO_FILTERS = {
   search: '',
@@ -102,6 +103,8 @@ function Logs({ project, projectId, live, onChange }) {
           {showForm ? 'Close' : '+ Add logs'}
         </button>
       </header>
+
+      <PageGuide page="logs" />
 
       {showForm && <LogForm projectId={projectId} onAdded={reload} />}
 

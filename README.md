@@ -18,6 +18,20 @@ the failure started to the ones that only failed after it.
 
 ## Features so far
 
+- **Runs on Podman:** every part in its own container (gateway, main UI,
+  **backup UI**, API, PostgreSQL), started with `./podman.sh up` and opened at
+  http://localhost:8080. If the main UI container stops, the gateway serves
+  the backup and the top bar shows which one is serving. Guide:
+  [PODMAN.md](PODMAN.md)
+- **Online for free:** the same Podman setup runs on an Oracle Cloud Always
+  Free server with one script (`containers/server-setup.sh`). Guide:
+  [SERVER.md](SERVER.md)
+- **Easy to understand:** every page starts with an "In simple words" guide
+  (what it is for, three steps, the words it uses). Telemetry shows a LIVE
+  badge and one plain sentence per service ("Healthy: 0 of 120 requests
+  failed..."). Each tool shows the question it answers
+- **Why BugSense page:** the pitch inside the app: Huawei Cloud workflow
+  before and after, and a savings calculator (engineer hours, money, AI cost)
 - **Login:** every feature needs a signed-in user. The first account becomes
   the owner, then sign-up closes (unless `ALLOW_SIGNUP=true`). Passwords are
   stored as scrypt hashes; sign-in tokens are signed with `SECRET_KEY` and
@@ -87,9 +101,22 @@ the failure started to the ones that only failed after it.
 products, and gives the evaluation so far.
 
 [PITCH.md](PITCH.md) pitches BugSense to Huawei Cloud: how it fits the
-workflow (OpenTelemetry, AOM/APM) and why it is cost-effective.
+workflow (OpenTelemetry, AOM/APM), the time developers save, and why it is
+cost-effective. The same content is on the **Why BugSense** page in the app.
 
 ## Architecture
+
+On Podman ([PODMAN.md](PODMAN.md)):
+
+```
+Browser -> gateway :8080 -+-> web-main   (UI)
+                          +-> web-backup (UI, used when web-main is down)
+                          +-> api :8000  -> db (PostgreSQL)
+                                ^   demo shop inside the api container,
+                                +-- sending OpenTelemetry to it
+```
+
+Local development:
 
 ```
 Browser -> React (port 5173) -> FastAPI (port 8000) -> PostgreSQL (port 5432)
@@ -102,7 +129,7 @@ Browser -> React (port 5173) -> FastAPI (port 8000) -> PostgreSQL (port 5432)
 - Frontend: React + Vite, plain CSS, hand-made SVG/HTML charts (no chart library)
 - Backend: Python + FastAPI
 - Database: PostgreSQL (via Postgres.app), accessed with SQLAlchemy
-- Runs as plain local processes (no Docker needed)
+- Containers: Podman (`compose.yaml`, `containers/`); for development it also runs as plain local processes
 
 ## Project structure
 
@@ -111,7 +138,7 @@ BugSense/
 ├── frontend/            React app
 │   └── src/
 │       ├── components/  Reusable UI pieces (TopNav, charts, cards, LogTable, DiagnosisPanel, TraceWaterfall)
-│       ├── pages/       Full screens (Dashboard, Incidents, Services, Telemetry, Logs, Datasets, Tools)
+│       ├── pages/       Full screens (Dashboard, Incidents, Services, Telemetry, Logs, Datasets, Tools, Why BugSense)
 │       └── services/    Code that calls the backend
 ├── backend/             FastAPI app
 │   ├── app/main.py      API entry point
@@ -123,6 +150,9 @@ BugSense/
 │   ├── datasets/        Real-world log files from Loghub
 │   └── tests/           Pytest tests
 ├── demo-services/       A three-program demo shop, instrumented with OpenTelemetry (otel.py)
+├── containers/          Containerfiles and nginx configs for Podman
+├── compose.yaml         The five containers (see PODMAN.md)
+├── podman.sh            ./podman.sh up | status | failover | logs | down
 ├── samples/             Example log files to upload
 └── .env.example         Example environment variables
 ```

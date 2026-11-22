@@ -1,8 +1,26 @@
 // All calls to the backend go through this file,
 // so the backend address lives in exactly one place.
 // A bare host name (what a hosting service may give) gets https:// in front.
+// A path like /api means "this same address" (the Podman gateway sends /api
+// to the backend container).
 const CONFIGURED_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const API_URL = (CONFIGURED_URL.includes('://') ? CONFIGURED_URL : `https://${CONFIGURED_URL}`).replace(/\/$/, '')
+function fullUrl(url) {
+  if (url.startsWith('/') || url.includes('://')) return url
+  return `https://${url}`
+}
+const API_URL = fullUrl(CONFIGURED_URL).replace(/\/$/, '')
+
+// Which UI container served this page (web-main or web-backup). Only the
+// Podman setup answers this; elsewhere it returns null.
+export async function getServedBy() {
+  try {
+    const response = await fetch('/served-by', { cache: 'no-store' })
+    if (!response.ok || !response.headers.get('content-type')?.includes('json')) return null
+    return (await response.json()).container
+  } catch {
+    return null
+  }
+}
 
 // ---------- The sign-in token ----------
 // Kept in the browser, and sent with every request. Storage can be blocked

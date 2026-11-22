@@ -12,12 +12,14 @@ import Services from './pages/Services.jsx'
 import SignIn from './pages/SignIn.jsx'
 import Telemetry from './pages/Telemetry.jsx'
 import Tools from './pages/Tools.jsx'
+import Value from './pages/Value.jsx'
 import {
   SIGNED_OUT_EVENT,
   getHealth,
   getIncidentSummary,
   getMe,
   getProjects,
+  getServedBy,
   getStreamStatus,
   getToken,
   setToken,
@@ -39,6 +41,7 @@ function Workspace({ user, onSignOut }) {
   const [projectId, setProjectId] = useState(savedProjectId)
   const [stream, setStream] = useState(null) // the live replay status
   const [criticalIncidents, setCriticalIncidents] = useState(0)
+  const [servedBy, setServedBy] = useState(null) // web-main or web-backup, on Podman
 
   const loadProjects = useCallback(() => {
     getProjects().then(setProjects).catch(() => setProjects([]))
@@ -60,6 +63,7 @@ function Workspace({ user, onSignOut }) {
       getIncidentSummary()
         .then((summary) => setCriticalIncidents(summary.critical))
         .catch(() => setCriticalIncidents(0))
+      getServedBy().then(setServedBy)
     }
     check()
     const timer = setInterval(check, 3000)
@@ -92,6 +96,7 @@ function Workspace({ user, onSignOut }) {
           criticalIncidents={criticalIncidents}
           user={user}
           onSignOut={onSignOut}
+          servedBy={servedBy}
         />
         <main className="content">
           <Routes>
@@ -117,6 +122,7 @@ function Workspace({ user, onSignOut }) {
             />
             <Route path="/telemetry" element={<Telemetry project={project} projectId={projectId} />} />
             <Route path="/tools" element={<Tools />} />
+            <Route path="/value" element={<Value />} />
             <Route
               path="/logs"
               element={<Logs project={project} projectId={projectId} live={live} onChange={loadProjects} />}

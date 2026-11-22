@@ -8,10 +8,11 @@ const PAGES = [
   { path: '/logs', label: 'Logs' },
   { path: '/datasets', label: 'Datasets' },
   { path: '/tools', label: 'Tools' },
+  { path: '/value', label: 'Why BugSense' },
 ]
 
 // The floating bar at the top: logo, page links, project picker and status.
-function TopNav({ health, projects, projectId, onProjectChange, stream, criticalIncidents, user, onSignOut }) {
+function TopNav({ health, projects, projectId, onProjectChange, stream, criticalIncidents, user, onSignOut, servedBy }) {
   const allGood = health?.backend === 'online' && health?.database === 'connected'
 
   let status = { tone: 'neutral', text: 'Checking...' }
@@ -68,6 +69,14 @@ function TopNav({ health, projects, projectId, onProjectChange, stream, critical
           <span className={`dot ${status.tone}`} />
           {status.text}
         </span>
+        {servedBy && (
+          <span
+            className={`container-pill ${servedBy === 'web-backup' ? 'backup' : ''}`}
+            title="Which Podman container served this page. If web-main stops, the gateway switches to web-backup."
+          >
+            {servedBy === 'web-backup' ? 'Backup UI · web-backup' : 'UI · web-main'}
+          </span>
+        )}
         {user && (
           <button type="button" className="user-pill" onClick={onSignOut} title={`Signed in as ${user.email}. Click to sign out.`}>
             {user.name} · Sign out

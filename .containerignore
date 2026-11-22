@@ -1,0 +1,11 @@
+# Never copy secrets or local build output into an image
+**/.env
+**/venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+.git
+.vscode
+.idea
+**/.DS_Store

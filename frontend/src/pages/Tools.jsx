@@ -1,5 +1,20 @@
 import { useEffect, useState } from 'react'
 import { getAiConfig, getTools, runTool } from '../services/api.js'
+import PageGuide from '../components/PageGuide.jsx'
+
+// The question each tool answers, in plain words
+const QUESTIONS = {
+  list_incidents: 'What problems are there right now?',
+  get_incident: 'What happened in this one problem?',
+  search_logs: 'Which log lines match what I am looking for?',
+  get_error_timeline: 'Which service failed first, and in what order did the others follow?',
+  get_service_status: 'Is each service running, and did it crash or restart?',
+  get_service_metrics: 'How many requests, how many failed, and how fast was each service?',
+  get_metric_series: 'How did one number change over time?',
+  search_traces: 'Which customer requests failed or were slow?',
+  get_trace: 'Which steps did one request go through, and where did it break?',
+  rank_root_causes: 'Which service most probably started the problem?',
+}
 
 // The JSON Schema of one parameter, without the "or null" part of optional ones
 function fieldType(field) {
@@ -147,6 +162,8 @@ function Tools() {
         )}
       </header>
 
+      <PageGuide page="tools" />
+
       <div className="tools-layout">
         <nav className="glass card tool-list" aria-label="Tools">
           {tools.map((item) => (
@@ -157,6 +174,7 @@ function Tools() {
               onClick={() => choose(item.name)}
             >
               <span className="mono">{item.name}</span>
+              {QUESTIONS[item.name] && <span className="tool-question">{QUESTIONS[item.name]}</span>}
               <span className="tool-count">{Object.keys(item.parameters.properties).length} parameters</span>
             </button>
           ))}
@@ -167,6 +185,7 @@ function Tools() {
             <div className="card-header">
               <div>
                 <h3 className="mono">{tool.name}</h3>
+                {QUESTIONS[tool.name] && <p className="tool-question-big">“{QUESTIONS[tool.name]}”</p>}
                 <p className="muted">{tool.description}</p>
               </div>
               <button type="button" className="button button-quiet button-small" onClick={() => setShowSchema(!showSchema)}>

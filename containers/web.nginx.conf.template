@@ -1,0 +1,24 @@
+# One UI container. ${UI_NAME} is web-main or web-backup.
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+
+    # Tells the page which container served it (shown in the top bar)
+    location = /served-by {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        return 200 '{"container": "${UI_NAME}"}';
+    }
+
+    # Built files have a content hash in their name, so they can be cached
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # Every page address (/incidents/12, /telemetry, ...) is handled by React
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}

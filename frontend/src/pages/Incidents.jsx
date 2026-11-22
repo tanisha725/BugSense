@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import IncidentRow from '../components/IncidentRow.jsx'
 import { detectIncidents, getIncidentSummary, getIncidents } from '../services/api.js'
+import PageGuide from '../components/PageGuide.jsx'
 
 const FILTERS = [
   { status: 'OPEN', label: 'Active' },
@@ -63,6 +64,8 @@ function Incidents({ project, projectId, live }) {
           Run detection again
         </button>
       </header>
+
+      <PageGuide page="incidents" />
 
       <div className="incident-summary">
         <div className="glass card summary-total">

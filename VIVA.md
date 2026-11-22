@@ -1344,7 +1344,7 @@ first, the failing hop in a trace, and a probable cause with evidence.
 2. **Rules first:** clear cases cost nothing (0 tokens, under 25 ms).
 3. **The AI sees evidence, not logs:** 7–13 K characters whatever the size
    of the incident, so AI cost does not grow with log volume.
-4. **Runs as one small process** (FastAPI + PostgreSQL), on a laptop.
+4. **Runs as small containers** on Podman (about 1.2 GB of memory in total), or as one process on a laptop.
 
 > "BugSense gives engineers explanations they can check, needs no training
 > data, keeps the AI's input small, plugs into OpenTelemetry which Huawei
@@ -1356,14 +1356,179 @@ hypothesis.
 
 ---
 
+## Podman, the backup UI, and making it easy to pitch (professor's feedback)
+
+The feedback: show how BugSense helps developers and companies (time and
+cost), make every page easy to understand, explain live monitoring with
+telemetry clearly, and **deploy on Podman, fully containerised, with a backup
+container for the UI**.
+
+### What a container is (easy words)
+
+A **container** is a program packed together with everything it needs
+(Python, libraries, settings), so it runs the same on any computer. An
+**image** is the packed recipe; a container is one running copy of it.
+
+**Podman** is the tool that runs containers. It does the same job as Docker
+but needs no always-running background service ("daemonless"), and runs
+containers as a normal user, not as administrator. On a Mac it uses a small
+Linux virtual machine; ours is limited to 2 CPUs and 2 GB, so the laptop stays
+fast.
+
+### The five containers
+
+| Container | Job |
+|---|---|
+| gateway | The front door (port 8080). `/api/...` goes to the API, pages go to the UI |
+| web-main | The main UI |
+| web-backup | A second copy of the same UI |
+| api | FastAPI backend, plus the demo shop sending live OpenTelemetry to it |
+| db | PostgreSQL; data kept in a volume, so it survives restarts |
+
+`compose.yaml` describes all five; `./podman.sh up` starts them.
+
+### How the backup UI works
+
+The gateway is **nginx** (a fast web server). In its config web-main is the
+normal server and web-backup is marked `backup`. If web-main does not answer
+within 2 seconds, nginx sends the **same request** to web-backup, so the user
+sees no error. For the next 10 seconds it keeps using the backup, then tries
+web-main again. This is called **failover**.
+
+The top bar shows a pill: green **UI · web-main**, or yellow
+**Backup UI · web-backup**. Each UI container answers `/served-by` with its
+name; the page asks every 3 seconds.
+
+**Demo:** `./podman.sh failover`, or `podman stop bugsense-web-main`, reload
+the page (it still works, the pill is yellow), then
+`podman start bugsense-web-main`.
+
+Also: every container has `restart: always` (Podman restarts it if it
+crashes) and a **health check** (a small command Podman runs to see whether it
+still works).
+
+### Safety in the containers
+
+- Secrets are never inside an image: `.containerignore` leaves out `.env`;
+  `./podman.sh` makes random secrets in a private `.env` file.
+- The API container runs as a normal user, not root.
+- The UI image has no Node.js in it: Node only builds the files, then nginx
+  serves them (a "multi-stage build"), so the image is small.
+- Fixed addresses inside the container network (10.90.7.x), so a container
+  that restarts comes back at the same address and the gateway finds it.
+
+### Live monitoring with telemetry, explained on the page
+
+The Telemetry page now shows:
+
+- A **LIVE** badge that pulses while data keeps arriving, and "updated 3 s ago".
+- One sentence for everything: "All 3 services are healthy" or
+  "1 of 3 services need attention: shop-api".
+- A strip of four steps: programs run → they report over OpenTelemetry →
+  BugSense stores traces, metrics, logs → the page reads them every 5 s.
+- On each service card, a plain sentence: "Healthy: 0 of 120 requests
+  failed; most answered within 40 ms", or "Problem: 34 of 100 requests failed".
+  Red uses the same rules as the alerts: 1 in 5 requests failing, or the
+  slowest 5% taking 1 second or more.
+
+> "Telemetry is like a car's dashboard: the programs report their own speed
+> and warning lights while they run. BugSense reads that dashboard every five
+> seconds and tells you in one sentence which service is in trouble."
+
+### Telemetry for uploaded logs (on the same page)
+
+Uploaded logs get telemetry too: BugSense calculates it from the lines
+(logs per minute and error share for every service; requests, latency and
+traces when lines share a request ID and say "took 120 ms").
+
+- Uploaded logs are usually from the past, so the page **opens on "All data"
+  by itself** for them ("These logs are from the past, so all their data is
+  shown"). Live data opens on the last 15 minutes.
+- The badge says **FROM UPLOADED LOGS** instead of LIVE, and the 4-step strip
+  explains how the numbers were calculated.
+- Logs with no request IDs (for example Apache) show log lines, logs per
+  minute and error logs, with a chart of logs per minute; the page explains
+  why there are no traces instead of showing empty boxes.
+
+> "If my logs have request IDs and durations, BugSense rebuilds the requests
+> as traces, the same as live telemetry. If they don't, it still shows each
+> service's activity and error share over time."
+
+### Easy to understand: the page guides
+
+Every page starts with an **"In simple words"** box: what the page is for,
+how to use it in three steps, the words it uses (trace, p95, incident...),
+and why it helps. It folds away, and the browser remembers. On the Tools page,
+each tool shows the plain question it answers, for example
+`get_error_timeline`: "Which service failed first?".
+
+### The Why BugSense page (the pitch inside the app)
+
+- **For developers / for the company / for trust:** three short cards.
+- **Huawei Cloud workflow:** services → OpenTelemetry Collector → AOM/APM
+  *and* BugSense. Then each step of one incident, today vs with BugSense,
+  with example minutes (95 vs 12).
+- **Savings calculator:** the company types its own numbers (incidents per
+  month, engineers, minutes, hourly cost, AI price). Example: 30 incidents ×
+  2 engineers × 83 minutes saved = **83 engineer hours a month**, about
+  **$3,300 a month** at $40 an hour. AI cost: 0 on the free tier, about $0.05
+  a month at an example price of $0.30 per million tokens.
+- **Cost table:** manual vs a large AI reading raw logs vs BugSense.
+- **Measured results** and the **4-week pilot**.
+
+**Be honest when asked:** "The minutes are assumptions to show the size of
+the saving. What we measured is BugSense's part: under 25 ms for rules, about
+10 seconds and 12 K tokens for the AI, and correct root service in 4 of 4
+faults. The pilot would measure the engineers' real minutes."
+
+### Online for others: Oracle Cloud Always Free
+
+The same five containers run on a free cloud server: Oracle Cloud "Always
+Free", an Ampere (ARM) server with Ubuntu. One script
+(`containers/server-setup.sh`) installs Podman, opens port 8080, makes the
+containers start again after a reboot, asks for the AI key, and starts
+everything. The link is `http://<server IP>:8080`. Guide: `SERVER.md`.
+
+- **Free:** Always Free includes up to 4 ARM CPUs and 24 GB; BugSense needs
+  about 1.2 GB. The account is never charged unless upgraded.
+- **ARM works** because every base image (Python, Node, nginx, PostgreSQL)
+  is published for ARM as well as Intel.
+- **Two firewalls:** Oracle's website (Security List rule for port 8080) and
+  the server's own (`iptables`); the script opens the second.
+- **Survives reboots:** `restart: always` plus Podman's `podman-restart`
+  service, with "linger" so it runs without anyone logged in.
+- **Updates:** push from the Mac, then `./podman.sh update` on the server
+  (git pull + rebuild what changed; the data stays in its volume).
+- **Guests:** `./podman.sh signup on`, then `off` again.
+
+> "BugSense runs in Podman containers on a free Oracle Cloud server, the same
+> setup as on my laptop, with a backup UI. Anyone can open the link."
+
+### Likely questions
+
+**Why a backup for the UI and not for the API?**
+The UI is what people look at, and it holds no data, so two copies are
+simple. The API runs the demo shop and its background jobs; two copies would
+start the shop twice. A second API would need those jobs moved out first
+(future work).
+
+**What happens to data if a container stops?**
+The data is in PostgreSQL's volume, not in the container, so nothing is lost.
+
+**Can it run on Huawei Cloud?**
+Yes: the same images run on any container platform, for example Huawei
+Cloud's container service; only the addresses and secrets change.
+
+---
+
 ## Design decisions I can defend
 
-**Why no Docker?**
+**Why Podman and not Docker?**
 
-> "Docker made my laptop hang, so I run everything as normal local
-> processes: the frontend, the backend and PostgreSQL. BugSense monitors
-> services at the process level, and the same idea can be extended to
-> containers later."
+> "Docker made my laptop hang. Podman runs the same containers without a
+> background service and without root, and I limit its virtual machine to
+> 2 CPUs and 2 GB. For quick development I can still run everything as plain
+> local processes."
 
 **Why plain CSS and not Tailwind?**
 There is nothing extra to install or explain. Every style lives in one file,
@@ -1527,3 +1692,11 @@ For the AI engine, put a free Groq key in `backend/.env` as
 | Back-off | Waiting longer before each new retry |
 | Health check | A page a service offers to say whether it can do its job |
 | Incident | A group of related errors treated as one problem |
+| Container | A program packed with everything it needs, so it runs the same anywhere |
+| Image | The packed recipe a container is started from |
+| Podman | The tool that builds and runs containers, without a background service or root |
+| Compose file | One file (`compose.yaml`) describing all the containers and how they connect |
+| Volume | Storage kept outside a container, so data survives when it stops |
+| Gateway | The one front door that sends each request to the right container |
+| Failover | Switching to a backup automatically when the main one stops answering |
+| Multi-stage build | Build with big tools in one step, keep only the result in the final image |

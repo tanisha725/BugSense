@@ -58,6 +58,48 @@ services changes.
 The engineer stays in charge. BugSense removes steps 1–4 of searching and
 hands over a hypothesis with the evidence to check it (step 5).
 
+### 3.1 Time saved, for developers and for the company
+
+The **Why BugSense** page in the app has this table and a calculator the
+company fills in with its own numbers. The example minutes below are
+**assumptions** that show the shape of the saving; the pilot (section 7)
+measures the real ones. BugSense's own steps are measured (under 25 ms for
+rules, about 10 s for the AI).
+
+| Step | Today | With BugSense |
+|---|---|---|
+| Alarm fires | ~10 min | ~1 min |
+| Find where it started | ~30 min | ~2 min |
+| Follow the failure | ~25 min | ~3 min |
+| Form a hypothesis | ~20 min | ~1 min |
+| Check it | ~10 min | ~5 min |
+| **Time to a checked hypothesis** | **~95 min** | **~12 min** |
+
+**Example** (the calculator's defaults): 30 incidents a month, 2 engineers
+each, an engineer hour costs $40.
+
+- Time saved: 30 × 2 × 83 min = **83 engineer hours a month** (about 1,000 a year).
+- Value of that time: **about $3,300 a month** (about $40,000 a year).
+- BugSense's cost: hosting (example $15 a month) plus AI tokens. On the free
+  tier the AI costs 0; at an example paid price of $0.30 per million tokens,
+  15 AI diagnoses × 12 K tokens cost about **$0.05 a month**.
+
+**For developers:** no more searching each service's logs by hand during an
+outage, one trace that shows the failing hop, and an answer with its
+evidence, so checking it takes minutes. Nothing new to install in the
+services.
+
+**For the company:** a shorter time to repair means shorter outages for
+customers; no training and no GPUs; AI cost that stays near 12 K tokens per
+incident however large the logs; fewer people pulled into each incident.
+
+### 3.2 How it is deployed
+
+Every part runs in a container on **Podman**: the API, PostgreSQL, the UI,
+a **backup UI**, and a gateway that switches to the backup when the main UI
+does not answer. Guide: [PODMAN.md](PODMAN.md). Small containers (about
+1.2 GB of memory in total) are cheap to run inside Huawei Cloud as well.
+
 ---
 
 ## 4. Cost-effectiveness
