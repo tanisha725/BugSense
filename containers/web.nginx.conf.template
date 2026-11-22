@@ -1,6 +1,7 @@
-# One UI container. ${UI_NAME} is web-main or web-backup.
+# One UI container. ${UI_NAME} is web-main or web-backup (or render).
+# ${PORT} is 80 on Podman, or the port a host such as Render chooses.
 server {
-    listen 80;
+    listen ${PORT};
     root /usr/share/nginx/html;
 
     # Tells the page which container served it (shown in the top bar)

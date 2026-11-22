@@ -36,9 +36,9 @@ the failure started to the ones that only failed after it.
   the owner, then sign-up closes (unless `ALLOW_SIGNUP=true`). Passwords are
   stored as scrypt hashes; sign-in tokens are signed with `SECRET_KEY` and
   last 7 days. OpenTelemetry senders use a separate `INGEST_TOKEN`
-- **Ready to deploy:** `render.yaml` creates the backend, frontend and
-  database on Render from this repository. Step-by-step guide:
-  [DEPLOY.md](DEPLOY.md)
+- **Public link on Render:** `render.yaml` builds the same api and web
+  container images on Render (free), plus a database, so anyone can try
+  BugSense at one https link. Step-by-step guide: [DEPLOY.md](DEPLOY.md)
 - **Root cause ordering (Phase 8):** every incident shows "Where did it
   start?": its services ranked from probable origin to affected, with points
   and reasons. Evidence: who failed first in each request (request IDs and

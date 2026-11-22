@@ -22,9 +22,10 @@ COPY containers/wait_for_db.py /srv/wait_for_db.py
 RUN useradd --create-home bugsense && chown -R bugsense /srv
 USER bugsense
 
+# The port: 8000 on Podman; hosts such as Render choose one and put it in $PORT
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"
+  CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.getenv('PORT', '8000'), timeout=4)"
 
 # Wait for PostgreSQL, then start the API
-CMD ["sh", "-c", "python /srv/wait_for_db.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "python /srv/wait_for_db.py && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

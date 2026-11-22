@@ -1250,11 +1250,13 @@ quota once it is online.
 | Every request | Sends "Authorization: Bearer <token>"; a missing or wrong token gets 401 |
 | OpenTelemetry | Programs are not people: they use a separate `INGEST_TOKEN` |
 
-**Deployment:** on **Render**, from GitHub, with no Docker. `render.yaml`
-(a "Blueprint") creates three parts: the backend (Python), the frontend
-(static files) and PostgreSQL. Secrets (`SECRET_KEY`, `INGEST_TOKEN`, the
-Groq key) live in Render's settings, never in GitHub. Every `git push`
-deploys the new version. Guide: `DEPLOY.md`.
+**Deployment (public link):** on **Render**, from GitHub. `render.yaml`
+(a "Blueprint") creates three parts: the backend **container** and the UI
+**container**, built from the same Containerfiles as Podman, and PostgreSQL.
+Secrets (`SECRET_KEY`, `INGEST_TOKEN`, the Groq key) live in Render's
+settings, never in GitHub. Sign-up is open there so visitors can try it.
+Every `git push` deploys the new version. Guide: `DEPLOY.md`. The full
+Podman setup (with the backup UI) is in `PODMAN.md`.
 
 ### Likely questions
 
@@ -1268,11 +1270,16 @@ Only the server knows `SECRET_KEY`, so only the server can make valid tokens.
 
 **Why is sign-up closed after the first account?**
 Once BugSense is on the internet, anyone could create an account, delete
-logs or use up the free AI quota.
+logs or use up the free AI quota. On the Render showcase I open it on
+purpose (`ALLOW_SIGNUP=true`) so people can try it, and can close it with one
+setting.
 
-**Why Render?**
-It builds from GitHub on its own servers (no Docker on my laptop), has free
-plans, and one file (`render.yaml`) describes the whole setup.
+**Why Render, if the project uses Podman?**
+They do different jobs. Podman is the containerised deployment: five
+containers with a backup UI, on my laptop or a free Oracle server. Render is
+the free public link for showcasing: it builds the **same container images**
+from GitHub and gives an https address anyone can open. Render runs one copy
+of each container, so the backup UI is shown on Podman.
 
 ---
 

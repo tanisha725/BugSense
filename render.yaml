@@ -1,16 +1,16 @@
-# Render Blueprint: creates the whole of BugSense in one go.
+# Render Blueprint: the public link for showcasing BugSense.
+# Render builds the SAME container images as Podman (containers/*.Containerfile).
 # Render dashboard -> New -> Blueprint -> pick this GitHub repo.
-# Step-by-step guide: DEPLOY.md
+# Step-by-step guide: DEPLOY.md   (the full Podman setup with the backup UI: PODMAN.md)
 
 services:
-  # The FastAPI backend (it also starts the demo shop when asked)
+  # The backend container (FastAPI + the demo shop that sends live OpenTelemetry)
   - type: web
     name: bugsense-api
-    runtime: python
-    rootDir: backend
+    runtime: docker
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./containers/api.Containerfile
+    dockerContext: .
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -23,31 +23,35 @@ services:
       # Only programs that know this may send OpenTelemetry data
       - key: INGEST_TOKEN
         generateValue: true
-      # The address of the frontend below (allowed to call this API).
-      # If Render gives the frontend a different address, change it here.
+      # The address of the UI below (allowed to call this API).
+      # If Render gives the UI a different address, change it here.
       - key: FRONTEND_URL
         value: https://bugsense-web.onrender.com
+      # Visitors can create their own account to try BugSense.
+      # Set to "false" in the dashboard to close sign-up.
+      - key: ALLOW_SIGNUP
+        value: "true"
       # Your free Groq key; Render asks for it when the Blueprint is created
       - key: LLM_API_KEY
         sync: false
 
-  # The React frontend, built once and served as plain files
+  # The UI container (React built once, served by nginx)
   - type: web
     name: bugsense-web
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    # Every page address (/incidents/12, /telemetry, ...) is handled by React
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    runtime: docker
+    plan: free
+    dockerfilePath: ./containers/web.Containerfile
+    dockerContext: .
+    healthCheckPath: /served-by
     envVars:
-      # The address of the backend above.
-      # If Render gives the backend a different address, change it here.
+      # Used while building the UI (Render passes it as a build argument).
+      # If Render gives the backend a different address, change it here and
+      # redeploy this service.
       - key: VITE_API_URL
         value: https://bugsense-api.onrender.com
+      # Shown in the top bar: which container served the page
+      - key: UI_NAME
+        value: render
 
 databases:
   - name: bugsense-db

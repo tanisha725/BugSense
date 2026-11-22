@@ -72,9 +72,9 @@ function TopNav({ health, projects, projectId, onProjectChange, stream, critical
         {servedBy && (
           <span
             className={`container-pill ${servedBy === 'web-backup' ? 'backup' : ''}`}
-            title="Which Podman container served this page. If web-main stops, the gateway switches to web-backup."
+            title="Which container served this page. On Podman, if web-main stops, the gateway switches to web-backup."
           >
-            {servedBy === 'web-backup' ? 'Backup UI · web-backup' : 'UI · web-main'}
+            {servedBy === 'web-backup' ? 'Backup UI · web-backup' : `UI · ${servedBy}`}
           </span>
         )}
         {user && (
