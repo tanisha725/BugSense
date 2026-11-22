@@ -2,19 +2,35 @@
 
 AI-Powered Intelligent Debugging & Incident Analysis Platform.
 
-BugSense will analyze application logs, errors and container events, group
-related failures into incidents, and help developers find the probable root
-cause. The project is built phase by phase.
+**Try it online:** https://bugsense-web.onrender.com (create an account; the
+free server may take about a minute to wake up)
 
-**Current status: Phase 8 (root cause ordering), on top of AI diagnosis with
-tools (Phase 7) and OpenTelemetry monitoring.** Logs can be pasted, uploaded, imported from six real-world
-datasets, streamed in live, or received over OpenTelemetry. Related failures
-are grouped into incidents. BugSense runs a three-service demo shop and
-monitors it with **OpenTelemetry** traces and metrics (requests, error rate,
-latency, CPU, memory). For any incident it finds the **probable cause** with
-10 investigation tools, used by an AI agent (a free model) or by a rule-based
-investigator when no AI key is set, and ranks the services from the one where
-the failure started to the ones that only failed after it.
+BugSense collects application logs and OpenTelemetry data, groups related
+failures into incidents, shows where each one started, and finds the probable
+root cause with evidence. It runs as Podman containers (with a backup UI) and
+is pitched to **Huawei Cloud**.
+
+Logs can be pasted, uploaded, imported from six real-world datasets, streamed
+in live, or received over OpenTelemetry. Related failures are grouped into
+incidents. BugSense runs a three-service demo shop and monitors it with
+**OpenTelemetry** traces and metrics (requests, error rate, latency, CPU,
+memory); for uploaded logs it calculates the same telemetry from the log
+lines. For any incident it finds the **probable cause** with 10 investigation
+tools, used by an AI agent (a free model) or by a rule-based investigator when
+no AI key is set, and ranks the services from the one where the failure
+started to the ones that only failed after it.
+
+## Documents
+
+| File | What it is |
+|---|---|
+| [PODMAN.md](PODMAN.md) | Running BugSense as five Podman containers, with the backup UI |
+| [DEPLOY.md](DEPLOY.md) | The public link on Render (same container images) |
+| [SERVER.md](SERVER.md) | The full Podman setup on a free Oracle Cloud server |
+| [PITCH.md](PITCH.md) | The pitch to Huawei Cloud: workflow, time saved, cost |
+| [RESEARCH.md](RESEARCH.md) | Comparison with Huawei's GRLIA paper, and the evaluation |
+| [VIVA.md](VIVA.md) | Everything explained in easy words, with likely viva questions |
+| [LOGS.md](LOGS.md) | Ready-made logs to paste or upload for testing and the demo |
 
 ## Features so far
 
@@ -68,12 +84,14 @@ the failure started to the ones that only failed after it.
   from shared request IDs, latency from durations written in the text ("in
   19 ms", "took 2.3 s", OpenStack's "time: 0.27"), and logs per minute and error
   share for every service. It is marked "From logs" (measured data is marked
-  "Measured"), is recalculated after every upload, and the Telemetry page's
-  "All data" view shows data from the past
+  "Measured") and is recalculated after every upload. Uploaded logs are
+  usually from the past, so the Telemetry page opens on "All data" for them,
+  with a "FROM UPLOADED LOGS" badge; services without request IDs show log
+  counts and error share instead of empty request boxes
 - Incident detection: problems close together in time (10-minute gap) are
   grouped into one incident, rated CRITICAL / HIGH / MEDIUM / LOW by clear
   rules, with the reason shown; incidents can be resolved and kept as history
-- Service monitoring (replaces Docker): BugSense starts the demo shop in
+- Service monitoring: BugSense starts the demo shop in
   `demo-services/`, restarts crashed services with back-off, detects crash
   loops (3 crashes in 60 s), checks `/health` every 3 s, stores everything
   they print, and records events as logs so crashes join incidents. Four
@@ -137,7 +155,7 @@ Browser -> React (port 5173) -> FastAPI (port 8000) -> PostgreSQL (port 5432)
 BugSense/
 ├── frontend/            React app
 │   └── src/
-│       ├── components/  Reusable UI pieces (TopNav, charts, cards, LogTable, DiagnosisPanel, TraceWaterfall)
+│       ├── components/  Reusable UI pieces (TopNav, PageGuide, charts, cards, LogTable, DiagnosisPanel, RootCausePanel, TraceWaterfall)
 │       ├── pages/       Full screens (Dashboard, Incidents, Services, Telemetry, Logs, Datasets, Tools, Why BugSense)
 │       └── services/    Code that calls the backend
 ├── backend/             FastAPI app
@@ -150,14 +168,28 @@ BugSense/
 │   ├── datasets/        Real-world log files from Loghub
 │   └── tests/           Pytest tests
 ├── demo-services/       A three-program demo shop, instrumented with OpenTelemetry (otel.py)
-├── containers/          Containerfiles and nginx configs for Podman
-├── compose.yaml         The five containers (see PODMAN.md)
-├── podman.sh            ./podman.sh up | status | failover | logs | down
+├── containers/          Containerfiles, nginx configs, server-setup.sh (Oracle)
+├── compose.yaml         The five Podman containers (see PODMAN.md)
+├── podman.sh            ./podman.sh up | status | failover | logs | signup on/off | update | down
+├── render.yaml          The public link on Render (see DEPLOY.md)
 ├── samples/             Example log files to upload
+├── *.md                 Guides, pitch, research and viva notes (see "Documents")
 └── .env.example         Example environment variables
 ```
 
-## Setup (local)
+## Run with Podman (recommended)
+
+Needs Podman and `pip3 install podman-compose` (details: [PODMAN.md](PODMAN.md)).
+
+```bash
+./podman.sh machine     # first time on a Mac: a small Podman VM (2 CPUs, 2 GB)
+./podman.sh up          # builds and starts the five containers
+```
+
+Open http://localhost:8080. `./podman.sh failover` shows the backup UI
+taking over; `./podman.sh down` stops everything (the data is kept).
+
+## Setup (local development, without containers)
 
 Database, once:
 
@@ -216,7 +248,7 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 
 | Variable       | Used by  | Default                 |
 | -------------- | -------- | ----------------------- |
-| `FRONTEND_URL` | backend  | `http://localhost:5173` |
+| `FRONTEND_URL` | backend  | `http://localhost:5173` (several addresses: comma-separated) |
 | `VITE_API_URL` | frontend | `http://localhost:8000` |
 | `DATABASE_URL` | backend  | `postgresql+psycopg://localhost:5432/bugsense` |
 | `LLM_API_KEY`  | backend  | empty: no AI, the rule-based investigator is used |
@@ -225,6 +257,10 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 | `INGEST_TOKEN` | backend  | empty: anyone may send OpenTelemetry data; set it when deployed |
 | `LLM_BASE_URL` | backend  | `https://api.groq.com/openai/v1` |
 | `LLM_MODEL`    | backend  | `openai/gpt-oss-20b` (small, free tier, supports tools) |
+| `PORT`         | backend, UI container | set by hosts such as Render; containers use 8000 (api) and 80 (UI) without it |
+| `BUGSENSE_URL` | backend  | where the demo shop sends telemetry; default `http://127.0.0.1:$PORT` |
+| `UI_NAME`      | UI container | `web-main`; shown in the top bar (`web-backup`, `render`) |
+| `POSTGRES_PASSWORD` | Podman | made at random by `./podman.sh` in `.env` |
 
 ## API overview
 
@@ -278,8 +314,9 @@ provider with an OpenAI-compatible chat API can be used instead (see below).
 | GET    | `/tools` | The 10 investigation tools with their parameter schemas |
 | POST   | `/tools/{name}` | Runs one tool; the JSON body is its parameters |
 | GET    | `/tools/config` | Whether an AI model is set up, and which one |
+| GET    | `/served-by` | (UI container, not the API) Which UI container served the page |
 
-Interactive API docs: http://localhost:8000/docs
+Interactive API docs: http://localhost:8000/docs (online: https://bugsense-api-o7ri.onrender.com/docs)
 
 ## Testing
 
@@ -288,3 +325,7 @@ cd backend
 source venv/bin/activate
 python -m pytest
 ```
+
+109 tests cover parsing, incidents, monitoring, OpenTelemetry, telemetry from
+logs, the tools, diagnosis, root cause ranking and login. The frontend is
+checked with `npm run lint` and `npm run build`.
